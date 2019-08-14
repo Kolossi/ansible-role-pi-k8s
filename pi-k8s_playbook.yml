@@ -1,0 +1,4 @@
+---
+- hosts: k8smasters
+  roles:
+    - pi-k8s

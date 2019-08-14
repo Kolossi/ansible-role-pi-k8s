@@ -1,0 +1,10 @@
+---
+- name: 'enable wait for network on boot'
+  shell:
+    cmd: |
+        cat > /tmp/netwait << EOF
+        [Service]
+        ExecStart=
+        ExecStart=/usr/lib/dhcpcd5/dhcpcd -q -w
+        EOF
+
