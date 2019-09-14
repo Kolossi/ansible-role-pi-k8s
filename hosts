@@ -33,26 +33,26 @@ all:
   children:
     nas:
       hosts:
-        castle
-        dungeon
+        castle:
+        dungeon:
          
     router:
       hosts:
-        drawbridge
+        drawbridge:
 
     minions:
       hosts:
-        k8s-pi-worker1
-        k8s-pi-worker2
-        k8s-pi-worker3
+        k8s-pi-worker1:
+        k8s-pi-worker2:
+        k8s-pi-worker3:
       
     k8smasters:
       hosts:
-        k8s-pi-master
+        k8s-pi-master:
 
     k8sworkers:
       hosts:
-        k8s-pi-worker1
-        k8s-pi-worker2
-        k8s-pi-worker3
+        k8s-pi-worker1:
+        k8s-pi-worker2:
+        k8s-pi-worker3:
   

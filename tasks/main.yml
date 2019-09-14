@@ -1,10 +1,49 @@
 ---
 - name: 'enable wait for network on boot'
+  register: bootwait_result
+  become: yes
   shell:
     cmd: |
-        cat > /tmp/netwait << EOF
+        cat > /etc/systemd/system/dhcpcd.service.d/wait.conf << EOF
         [Service]
         ExecStart=
         ExecStart=/usr/lib/dhcpcd5/dhcpcd -q -w
         EOF
+    creates: /etc/systemd/system/dhcpcd.service.d/wait.conf
+
+- name: 'update hostname'
+  when: inventory_hostname != ansible_hostname
+  register: hostname_result
+  become: yes
+  lineinfile:
+    path: /etc/hostname
+    regexp: '^{{ ansible_hostname }}'
+    line: "{{ inventory_hostname }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: 'update hosts file'
+  when: inventory_hostname != ansible_hostname
+  register: hosts_result
+  become: yes
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1'
+    line: 127.0.1.1 {{ inventory_hostname }}
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: 'create serfs mount point'
+  file:
+  become: yes
+    path: /serfs
+    state: directory
+
+- name: 'reboot after hostname change'
+  when: bootwait_result.changed or hostname_result.changed or hosts_result.changed
+  become: yes
+  reboot:
+
 
