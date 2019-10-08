@@ -41,8 +41,8 @@
     path: /serfs
     state: directory
 
-- name: 'add cgroup items to /boot/config.txt'
-  register: config_cgroup_enable_result
+- name: 'add cgroup enable cpuset to /boot/config.txt'
+  register: config_cgroup_enable_cpuset_result
   become: yes
   lineinfile:
     path: /tmp/config.txt
@@ -50,6 +50,23 @@
     line: '\1 cgroup_enable=cpuset'
     backrefs: yes
 
+- name: 'add cgroup memory to /boot/config.txt'
+  register: config_cgroup_memory_result
+  become: yes
+  lineinfile:
+    path: /tmp/config.txt
+    regexp: '^(((?! cgroup_memory=1).))'
+    line: '\1 cgroup_memory=1'
+    backrefs: yes
+
+- name: 'add cgroup enable memory to /boot/config.txt'
+  register: config_cgroup_enable_memory_result
+  become: yes
+  lineinfile:
+    path: /tmp/config.txt
+    regexp: '^(((?! cgroup_enable=memory).))'
+    line: '\1 cgroup_enable=memory'
+    backrefs: yes
 
 # sudo swapon --summary : rc=0 if swap on rc=255 if not
 - name: 'turn off swap'
@@ -57,7 +74,7 @@
   shell: "dphys-swapfile swapoff && dphys-swapfile uninstall && apt remove dphys-swapfile"
 
 - name: 'reboot after hostname change'
-  when: bootwait_result.changed or hostname_result.changed or hosts_result.changed
+  when: bootwait_result.changed or hostname_result.changed or hosts_result.changed or config_cgroup_enable_cpuset_result.changed or config_cgroup_memory_result.changed or config_cgroup_enable_memory_result.changed
   become: yes
   reboot:
 
@@ -83,6 +100,63 @@
 
 - name: 'reboot after apt updates'
   when: update_result.changed or upgrade_result.changed or autoremove_result.changed
+  become: yes
+  reboot:
+
+- name: 'install docker'
+  register: install_docker_result
+  shell:
+    cmd: "curl -sSL get.docker.com | sh"
+    creates: /usr/local/bin/docker
+
+- name: 'add pi user to docker group'
+  register: pi_user_result
+  user:
+    name: pi
+    append: yes
+    groups: docker
+  meta: reset_connection  # to pickup new group membership, thanks: https://stackoverflow.com/questions/26677064/create-and-use-group-without-restart
+
+# thanks: http://www.mydailytutorials.com/ansible-create-files/
+- name: 'populate daemon.json'
+  register: daemon_json_result
+  become: yes
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "exec-opts": ["native.cgroupdriver=systemd"],
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "100m"
+        },
+        "storage-driver": "overlay2"
+      }
+
+# thanks: http://www.mydailytutorials.com/ansible-create-directory/
+- name: 'create docker.service.d directory'
+  register: create_docker_service_directory
+  become: yes
+  file:
+    path: /etc/systemd/system/docker/service.d
+    state: directory
+
+-name: 'systemctl restart docker'
+  become: yes
+  when: pi_user_result.changed or daemon_json_result.changed or create_docker_service_directory.changed
+  systemd:
+    state: restarted
+    name: docker
+    daemon_reload: yes
+    
+-name: 'test docker'
+  become: yes
+  when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed or create_docker_service_directory.changed
+  shell:
+    cmd: "docker run hello-world"
+
+- name: 'reboot after docker install'
+  when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed or create_docker_service_directory.changed
   become: yes
   reboot:
 
