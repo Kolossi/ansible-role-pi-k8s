@@ -36,8 +36,8 @@
     mode: '0644'
 
 - name: 'create serfs mount point'
-  file:
   become: yes
+  file:
     path: /serfs
     state: directory
 
@@ -45,8 +45,8 @@
   register: config_cgroup_enable_cpuset_result
   become: yes
   lineinfile:
-    path: /tmp/config.txt
-    regexp: '^(((?! cgroup_enable=cpuset).))'
+    path: /boot/cmdline.txt
+    regexp: '^(((?! cgroup_enable=cpuset).)*$)'
     line: '\1 cgroup_enable=cpuset'
     backrefs: yes
 
@@ -54,8 +54,8 @@
   register: config_cgroup_memory_result
   become: yes
   lineinfile:
-    path: /tmp/config.txt
-    regexp: '^(((?! cgroup_memory=1).))'
+    path: /boot/cmdline.txt
+    regexp: '^(((?! cgroup_memory=1).)*$)'
     line: '\1 cgroup_memory=1'
     backrefs: yes
 
@@ -63,32 +63,50 @@
   register: config_cgroup_enable_memory_result
   become: yes
   lineinfile:
-    path: /tmp/config.txt
-    regexp: '^(((?! cgroup_enable=memory).))'
+    path: /boot/cmdline.txt
+    regexp: '^(((?! cgroup_enable=memory).)*$)'
     line: '\1 cgroup_enable=memory'
     backrefs: yes
 
+- name: 'check if swap enabled'
+  register: swapcheck_result
+  shell: "free -m | grep Swap:"
+  changed_when: false
+
 # sudo swapon --summary : rc=0 if swap on rc=255 if not
 - name: 'turn off swap'
+  register: offswap_result
   become: yes
-  shell: "dphys-swapfile swapoff && dphys-swapfile uninstall && apt remove dphys-swapfile"
+  command: "{{ item }}"
+  with_items:
+   - dphys-swapfile swapoff
+   - dphys-swapfile uninstall
+   - apt remove -qy dphys-swapfile
+  when: "swapcheck_result.stdout!='Swap:             0           0           0'"
+
+#- name: 'offswap debug'
+#  debug:
+#    msg: offswap_result
 
 - name: 'reboot after hostname change'
   when: bootwait_result.changed or hostname_result.changed or hosts_result.changed or config_cgroup_enable_cpuset_result.changed or config_cgroup_memory_result.changed or config_cgroup_enable_memory_result.changed
   become: yes
   reboot:
 
-- name: Only run "update_cache=yes" if the last one is more than 3600 seconds ago
+- name: 'install aptitude'
   become: yes
-  register: update_result
+  register: aptitude_result
   apt:
     update_cache: yes
-    cache_valid_time: 3600
+    cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
+    name: aptitude
 
 - name: Upgrade all packages to the latest version
   become: yes
   register: upgrade_result
   apt:
+    update_cache: yes
+    cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
     name: "*"
     state: latest
 
@@ -99,7 +117,7 @@
     autoremove: yes
 
 - name: 'reboot after apt updates'
-  when: update_result.changed or upgrade_result.changed or autoremove_result.changed
+  when: aptitude_result.changed or upgrade_result.changed or autoremove_result.changed
   become: yes
   reboot:
 
@@ -107,14 +125,19 @@
   register: install_docker_result
   shell:
     cmd: "curl -sSL get.docker.com | sh"
-    creates: /usr/local/bin/docker
+    creates: /usr/bin/docker
+  args:
+    warn: false # prevent warning about curl
 
 - name: 'add pi user to docker group'
   register: pi_user_result
+  become: yes
   user:
     name: pi
     append: yes
     groups: docker
+
+- name: 'reconnect to pickup group membership'
   meta: reset_connection  # to pickup new group membership, thanks: https://stackoverflow.com/questions/26677064/create-and-use-group-without-restart
 
 # thanks: http://www.mydailytutorials.com/ansible-create-files/
@@ -138,10 +161,10 @@
   register: create_docker_service_directory
   become: yes
   file:
-    path: /etc/systemd/system/docker/service.d
+    path: /etc/systemd/system/docker.service.d
     state: directory
 
--name: 'systemctl restart docker'
+- name: 'systemctl restart docker'
   become: yes
   when: pi_user_result.changed or daemon_json_result.changed or create_docker_service_directory.changed
   systemd:
@@ -149,7 +172,7 @@
     name: docker
     daemon_reload: yes
     
--name: 'test docker'
+- name: 'test docker'
   become: yes
   when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed or create_docker_service_directory.changed
   shell:
@@ -159,4 +182,97 @@
   when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed or create_docker_service_directory.changed
   become: yes
   reboot:
+
+- name: 'update apt sources'
+  become: yes
+  lineinfile:
+    path: /etc/apt/sources.list.d/kubernetes.list
+    line: "deb http://apt.kubernetes.io/ kubernetes-xenial main"
+    create: yes
+
+- name: 'add google apt key'
+  become: yes
+  register: aptkey_result
+  apt_key:
+    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    state: present
+
+- name: 'update apt cache after key add'
+  become: yes
+  register: addkey_result
+  apt:
+    update_cache: yes
+  when: aptkey_result.changed
+
+- name: 'install kubeadm and kubectl'
+  become: yes
+  register: k8s_install_result
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
+    name: kubeadm
+
+- name: 'reboot after k8s install'
+  when: k8s_install_result.changed
+  become: yes
+  reboot:
+
+- name: 'check for k8s images'
+  when: inventory_hostname in groups['k8smasters']
+  register: image_check_result
+  become: yes
+  shell: "docker image ls k8s.gcr.io/kube-apiserver | grep k8s.gcr.io/kube-apiserver"
+  changed_when: false
+  failed_when: image_check_result.rc != 0 and image_check_result.rc != 1
+  ignore_errors: true
+  
+- name: 'pull k8s images'
+  when: inventory_hostname in groups['k8smasters'] and image_check_result.rc != 0
+  become: yes
+  command: "kubeadm config images pull"
+
+- name: 'kubeadm init'
+  when: inventory_hostname in groups['k8smasters']
+  become: yes
+  # cidr required for flannel, see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
+  # maybe see also https://blog.hypriot.com/post/setup-kubernetes-raspberry-pi-cluster/
+  shell:
+    cmd: kubeadm init --token-ttl=0 --pod-network-cidr=10.244.0.0/16
+    creates: /etc/kubernetes/manifests/kube-apiserver.yaml
+
+- name: 'create .kube dir'
+  file:
+    path: "{{ ansible_env.HOME }}/.kube"
+    state: directory
+
+- name: 'create kube config'
+  when: inventory_hostname in groups['k8smasters']
+  shell:
+    cmd: "sudo cp -n /etc/kubernetes/admin.conf $HOME/.kube/config && sudo chown $(id -u):$(id -g) $HOME/.kube/config"
+    creates: "{{ ansible_env.HOME }}/.kube/config"
+  
+- name: 'setup iptables bridging'
+  when: inventory_hostname in groups['k8smasters']
+  become: yes
+  sysctl:
+    name: net.bridge.bridge-nf-call-iptables
+    value: "1"
+    state: present
+    sysctl_set: yes
+    reload: yes
+  
+- name: 'check for flannel'
+  when: inventory_hostname in groups['k8smasters']
+  register: flannel_check_result
+  shell: "kubectl get pods -n kube-system | grep flannel"
+  changed_when: false
+  failed_when: flannel_check_result.rc != 0 and flannel_check_result.rc != 1
+  ignore_errors: true
+
+- name: 'install flannel'
+  when: inventory_hostname in groups['k8smasters'] and flannel_check_result.rc != 0
+  # see latest commit sha in https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
+  command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/2140ac876ef134e0ed5af15c65e414cf26827915/Documentation/kube-flannel.yml
+
+## https://github.com/kairen/kubeadm-ansible
 
