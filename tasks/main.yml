@@ -35,12 +35,6 @@
     group: root
     mode: '0644'
 
-- name: 'create serfs mount point'
-  become: yes
-  file:
-    path: /serfs
-    state: directory
-
 - name: 'add cgroup enable cpuset to /boot/config.txt'
   register: config_cgroup_enable_cpuset_result
   become: yes

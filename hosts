@@ -1,58 +1,36 @@
 ---
+# example hosts file:
 
-all:
-  hosts:
-    castle:
-      ansible_host: 192.168.77.200
-      ansible_port: 8715
-      ansible_user: valet
-      ansible_ssh_transfer_method: scp
-      ansible_python_interpreter: auto_silent
-    dungeon:
-      ansible_host: 192.168.77.210
-      ansible_port: 8815
-      ansible_user: valet
-      ansible_ssh_transfer_method: scp
-      ansible_python_interpreter: auto_silent
-    drawbridge:
-      ansible_host: 192.168.77.1
-      ansible_port: 8915
-      ansible_user: valet
-      ansible_ssh_transfer_method: scp
-      ansible_python_interpreter: /usr/bin/python
-    k8s-pi-master:
-      ansible_host: 192.168.77.240
-      ansible_user: pi
-      ansible_password: raspberry
-    k8s-pi-worker1:
-      ansible_host: 192.168.77.241
-    k8s-pi-worker2:
-      ansible_host: 192.168.77.242
-    k8s-pi-worker3:
-      ansible_host: 192.168.77.243
-  children:
-    nas:
-      hosts:
-        castle:
-        dungeon:
-         
-    router:
-      hosts:
-        drawbridge:
-
-    minions:
-      hosts:
-        k8s-pi-worker1:
-        k8s-pi-worker2:
-        k8s-pi-worker3:
-      
-    k8smasters:
-      hosts:
-        k8s-pi-master:
-
-    k8sworkers:
-      hosts:
-        k8s-pi-worker1:
-        k8s-pi-worker2:
-        k8s-pi-worker3:
-  
+#all:
+#  hosts:
+#    k8s-pi-master:
+#      ansible_host: 192.168.77.240
+#      ansible_user: pi
+#      ansible_password: raspberry
+#    k8s-pi-worker1:
+#      ansible_host: 192.168.77.241
+#      ansible_user: pi
+#      ansible_password: raspberry
+#    k8s-pi-worker2:
+#      ansible_host: 192.168.77.242
+#      ansible_user: pi
+#      ansible_password: raspberry
+#    k8s-pi-worker3:
+#      ansible_host: 192.168.77.243
+#      ansible_user: pi
+#      ansible_password: raspberry
+#  children:
+#    k8sall:
+#      hosts:
+#        k8s-pi-master:
+#        k8s-pi-worker1:
+#        k8s-pi-worker2:
+#        k8s-pi-worker3:
+#    k8smasters:
+#      hosts:
+#        k8s-pi-master:
+#    k8sworkers:
+#      hosts:
+#        k8s-pi-worker1:
+#        k8s-pi-worker2:
+#        k8s-pi-worker3:

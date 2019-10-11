@@ -1,4 +1,4 @@
 ---
-- hosts: k8smasters
+- hosts: k8sall
   roles:
     - pi-k8s
