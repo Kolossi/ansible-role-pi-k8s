@@ -294,18 +294,26 @@
   changed_when: false
   failed_when: node_check_result.rc != 0 and node_check_result.rc != 1
   ignore_errors: true
+  delegate_to: "{{ groups['k8smasters'][0] }}"
+
+- name: 'debug token'
+  debug:
+    msg: "{{ hostvars[groups['k8smasters'][0]] }}"
+  tags: debug
 
 - name: 'check for token if join needed'
-  when: inventory_hostname in groups['k8sworkers'] and node_check_result.rc != 0
-  failed_when: token_result.rc != 0 or token_result.stdout == ""
+  when: inventory_hostname in groups['k8sworkers'] and node_check_result.rc != 0 and (hostvars[groups['k8smasters'][0]]['token_result']['rc'] != 0 or hostvars[groups['k8smasters'][0]]['token_result']['stdout'] == "")
+  fail:
+    msg: "Worker join required, but token information not found - was master included in hosts?"
 
 - name: 'join cluster'
   when: inventory_hostname in groups['k8sworkers'] and node_check_result.rc != 0
+  become: yes
   command: "kubeadm join {{ hostvars[groups['k8smasters'][0]]['ansible_default_ipv4']['address']}}:6443 --token {{ hostvars[groups['k8smasters'][0]]['token_result']['stdout'] }} --discovery-token-ca-cert-hash sha256:{{ hostvars[groups['k8smasters'][0]]['token_sha_result']['stdout'] }}"
 
-- name: 'delete token'
-  when: inventory_hostname == groups['k8smasters'][0] and token_result.rc == 0 and token_result.stdout != 0
-  commend: "kubeadm token delete {{ token_result.stdout }}"
+#- name: 'delete token'
+#  when: inventory_hostname == groups['k8smasters'][0] and token_result.rc == 0 and token_result.stdout != 0
+#  command: "kubeadm token delete {{ token_result.stdout }}"
 
 
 ## https://github.com/kairen/kubeadm-ansible
