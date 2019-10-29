@@ -104,7 +104,7 @@
     cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
     name: aptitude
 
-- name: Upgrade all packages to the latest version
+- name: 'Upgrade all packages to the latest version'
   become: yes
   register: upgrade_result
   apt:
@@ -113,7 +113,7 @@
     name: "*"
     state: latest
 
-- name: Remove dependencies that are no longer required
+- name: 'Remove dependencies that are no longer required'
   become: yes
   register: autoremove_result
   apt:
@@ -131,6 +131,29 @@
     creates: /usr/bin/docker
   args:
     warn: false # prevent warning about curl
+
+- name: Get held packages
+  become: yes
+  command: apt-mark showhold
+  register: held_packages
+  changed_when: false
+
+- name: hold containerd.io
+  become: yes
+  command: apt-mark hold containerd.io
+  when: '"containerd.io" not in held_packages.stdout and install_docker_result.changed'
+
+- name: hold docker-ce
+  become: yes
+  command: apt-mark hold docker-ce
+  when: '"docker-ce" not in held_packages.stdout and install_docker_result.changed'
+
+- name: hold docker-ce-cli
+  become: yes
+  command: apt-mark hold docker-ce-cli
+  when: '"docker-ce-cli" not in held_packages.stdout and install_docker_result.changed'
+
+ 
 
 - name: 'add pi user to docker group'
   register: pi_user_result
@@ -215,6 +238,26 @@
     cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
     name: kubeadm
 
+- name: hold kubeadm
+  become: yes
+  command: apt-mark hold kubeadm
+  when: '"kubeadm" not in held_packages.stdout and k8s_install_result.changed'
+
+- name: hold kubectl
+  become: yes
+  command: apt-mark hold kubectl
+  when: '"kubectl" not in held_packages.stdout and k8s_install_result.changed'
+
+- name: hold kubelet
+  become: yes
+  command: apt-mark hold kubelet
+  when: '"kubelet" not in held_packages.stdout and k8s_install_result.changed'
+
+- name: hold kubernetes-cni
+  become: yes
+  command: apt-mark hold kubernetes-cni
+  when: '"kubernetes-cni" not in held_packages.stdout and k8s_install_result.changed'
+ 
 - name: 'reboot after k8s install'
   when: k8s_install_result.changed
   become: yes
