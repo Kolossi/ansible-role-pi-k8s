@@ -126,6 +126,8 @@
 
 - name: 'install docker'
   register: install_docker_result
+  environment:
+    VERSION: "18.09"
   shell:
     cmd: "curl -sSL get.docker.com | sh"
     creates: /usr/bin/docker
@@ -182,17 +184,18 @@
         "storage-driver": "overlay2"
       }
 
-# thanks: http://www.mydailytutorials.com/ansible-create-directory/
-- name: 'create docker.service.d directory'
-  register: create_docker_service_directory
-  become: yes
-  file:
-    path: /etc/systemd/system/docker.service.d
-    state: directory
+## thanks: http://www.mydailytutorials.com/ansible-create-directory/
+#- name: 'create docker.service.d directory'
+#  register: create_docker_service_directory
+#  become: yes
+#  file:
+#    path: /etc/systemd/system/docker.service.d
+#    state: directory
 
 - name: 'systemctl restart docker'
   become: yes
-  when: pi_user_result.changed or daemon_json_result.changed or create_docker_service_directory.changed
+  when: pi_user_result.changed or daemon_json_result.changed
+# or create_docker_service_directory.changed
   systemd:
     state: restarted
     name: docker
@@ -200,12 +203,14 @@
     
 - name: 'test docker'
   become: yes
-  when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed or create_docker_service_directory.changed
+  when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed
+# or create_docker_service_directory.changed
   shell:
     cmd: "docker run hello-world"
 
 - name: 'reboot after docker install'
-  when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed or create_docker_service_directory.changed
+  when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed
+# or create_docker_service_directory.changed
   become: yes
   reboot:
 
@@ -324,11 +329,13 @@
   when: inventory_hostname == groups['k8smasters'][0]
   register: token_result
   shell: "kubeadm token list | grep 'kubeadm init' | cut -f1 -d' '"
+  tags: always, nodecheck
 
 - name: 'get token sha'
   when: inventory_hostname == groups['k8smasters'][0]
   register: token_sha_result
   shell: "openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //'"
+  tags: always, nodecheck
 
 - name: 'check for joined node'
   when: inventory_hostname in groups['k8sworkers']
@@ -338,16 +345,23 @@
   failed_when: node_check_result.rc != 0 and node_check_result.rc != 1
   ignore_errors: true
   delegate_to: "{{ groups['k8smasters'][0] }}"
+  tags: always, nodecheck
 
 - name: 'debug token'
   debug:
     msg: "{{ hostvars[groups['k8smasters'][0]] }}"
-  tags: debug
+  tags: debug,never
+
+- name: 'debug nodecheck'
+  debug:
+    msg: "{{ hostvars }}"
+  tags: nodecheck,never
 
 - name: 'check for token if join needed'
-  when: inventory_hostname in groups['k8sworkers'] and node_check_result.rc != 0 and (hostvars[groups['k8smasters'][0]]['token_result']['rc'] != 0 or hostvars[groups['k8smasters'][0]]['token_result']['stdout'] == "")
+  when: inventory_hostname in groups['k8sworkers'] and node_check_result.rc != 0 and (hostvars[groups['k8smasters'][0]]['token_result']['rc'] != 0 or hostvars[groups['k8smasters'][0]]['token_result']['stdout'] == "") and (hostvars[groups['k8smasters'][0]]['token_sha_result']['rc'] != 0 or hostvars[groups['k8smasters'][0]]['token_sha_result']['stdout'] == "")
   fail:
     msg: "Worker join required, but token information not found - was master included in hosts?"
+  tags: always, nodecheck
 
 - name: 'join cluster'
   when: inventory_hostname in groups['k8sworkers'] and node_check_result.rc != 0
