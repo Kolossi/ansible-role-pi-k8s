@@ -91,8 +91,28 @@
 #  debug:
 #    msg: offswap_result
 
-- name: 'reboot after hostname change'
-  when: bootwait_result.changed or hostname_result.changed or hosts_result.changed or config_cgroup_enable_cpuset_result.changed or config_cgroup_memory_result.changed or config_cgroup_enable_memory_result.changed
+- name: 'store /tmp in ram'
+  become: yes
+  register: tmp_ram_result
+  mount:
+    src: tmpfs
+    path: /tmp
+    fstype: tmpfs
+    opts: defaults,noatime,size=200m
+    state: present
+    
+- name: 'store /var/log in ram'
+  become: yes
+  register: log_ram_result
+  mount:
+    src: tmpfs
+    path: /var/log
+    fstype: tmpfs
+    opts: defaults,noatime,size=64m
+    state: present
+
+- name: 'reboot after initial setup'
+  when: bootwait_result.changed or hostname_result.changed or hosts_result.changed or config_cgroup_enable_cpuset_result.changed or config_cgroup_memory_result.changed or config_cgroup_enable_memory_result.changed or tmp_ram_result.changed or log_ram_result.changed
   become: yes
   reboot:
 
@@ -118,34 +138,62 @@
   register: autoremove_result
   apt:
     autoremove: yes
-
 - name: 'reboot after apt updates'
   when: aptitude_result.changed or upgrade_result.changed or autoremove_result.changed
   become: yes
   reboot:
 
-- name: 'install docker'
-  register: install_docker_result
-  environment:
-    VERSION: "18.09"
-  shell:
-    cmd: "curl -sSL get.docker.com | sh"
-    creates: /usr/bin/docker
-  args:
-    warn: false # prevent warning about curl
+## can't run the following right now, because it installs latest docker
+## which is not compatible with latest kubernetes
+#- name: 'install docker'
+#  register: install_docker_result
+#  shell:
+#    cmd: "curl -sSL get.docker.com | sh"
+#    creates: /usr/bin/docker
+#  args:
+#    warn: false # prevent warning about curl
 
-- name: Get held packages
+- name: 'setup apt over https'
+  become: yes
+  apt:
+    name: ['apt-transport-https', 'ca-certificates', 'curl', 'gnupg2', 'software-properties-common']
+    state: present
+    install_recommends: no
+
+- name: 'add docker gpg key'
+  become: yes
+  shell: "curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add -"
+  args:
+    warn: no
+    
+- name: "add docker repo"
+  become: yes
+  register: add_docker_repo_result
+  apt_repository:
+    repo: deb [arch=armhf] https://download.docker.com/linux/debian buster stable
+    state: present
+    update_cache: yes
+
+- name: 'install docker'
+  become: yes
+  register: install_docker_result
+  apt:
+    name: ['containerd.io={{ containerdio_version }}', 'docker-ce-cli={{ docker_ce_cli_version }}', 'docker-ce={{ docker_ce_version }}']
+    state: present
+    install_recommends: no
+
+- name: 'Get held packages'
   become: yes
   command: apt-mark showhold
   register: held_packages
   changed_when: false
 
-- name: hold containerd.io
+- name: 'hold containerd.io'
   become: yes
   command: apt-mark hold containerd.io
   when: '"containerd.io" not in held_packages.stdout and install_docker_result.changed'
 
-- name: hold docker-ce
+- name: 'hold docker-ce'
   become: yes
   command: apt-mark hold docker-ce
   when: '"docker-ce" not in held_packages.stdout and install_docker_result.changed'
@@ -154,7 +202,6 @@
   become: yes
   command: apt-mark hold docker-ce-cli
   when: '"docker-ce-cli" not in held_packages.stdout and install_docker_result.changed'
-
  
 
 - name: 'add pi user to docker group'
@@ -206,7 +253,7 @@
   when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed
 # or create_docker_service_directory.changed
   shell:
-    cmd: "docker run hello-world"
+    cmd: "docker run armhf/hello-world"
 
 - name: 'reboot after docker install'
   when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed
@@ -241,7 +288,7 @@
   apt:
     update_cache: yes
     cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
-    name: kubeadm
+    name: 'kubeadm={{ kubeadm_version }}'
 
 - name: hold kubeadm
   become: yes
@@ -284,11 +331,12 @@
 
 - name: 'kubeadm init'
   when: inventory_hostname in groups['k8smasters']
+  any_errors_fatal: yes
   become: yes
   # cidr required for flannel, see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
   # maybe see also https://blog.hypriot.com/post/setup-kubernetes-raspberry-pi-cluster/
   shell:
-    cmd: kubeadm init --token-ttl=0 --pod-network-cidr=10.244.0.0/16
+    cmd: kubeadm init --token-ttl=0 --pod-network-cidr=10.244.0.0/16 -v=5
     creates: /etc/kubernetes/manifests/kube-apiserver.yaml
 
 - name: 'create .kube dir'
@@ -301,6 +349,8 @@
   shell:
     cmd: "sudo cp -n /etc/kubernetes/admin.conf $HOME/.kube/config && sudo chown $(id -u):$(id -g) $HOME/.kube/config"
     creates: "{{ ansible_env.HOME }}/.kube/config"
+  args:
+    warn: no
   
 - name: 'setup iptables bridging'
   when: inventory_hostname in groups['k8smasters']
@@ -337,6 +387,12 @@
   shell: "openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //'"
   tags: always, nodecheck
 
+# https://stackoverflow.com/a/52335566/2738122
+- name: 'taint master'
+  when: inventory_hostname == groups['k8smasters'][0]
+  become: yes
+  command: kubectl taint nodes --all node-role.kubernetes.io/master-
+
 - name: 'check for joined node'
   when: inventory_hostname in groups['k8sworkers']
   register: node_check_result
@@ -346,16 +402,6 @@
   ignore_errors: true
   delegate_to: "{{ groups['k8smasters'][0] }}"
   tags: always, nodecheck
-
-- name: 'debug token'
-  debug:
-    msg: "{{ hostvars[groups['k8smasters'][0]] }}"
-  tags: debug,never
-
-- name: 'debug nodecheck'
-  debug:
-    msg: "{{ hostvars }}"
-  tags: nodecheck,never
 
 - name: 'check for token if join needed'
   when: inventory_hostname in groups['k8sworkers'] and node_check_result.rc != 0 and (hostvars[groups['k8smasters'][0]]['token_result']['rc'] != 0 or hostvars[groups['k8smasters'][0]]['token_result']['stdout'] == "") and (hostvars[groups['k8smasters'][0]]['token_sha_result']['rc'] != 0 or hostvars[groups['k8smasters'][0]]['token_sha_result']['stdout'] == "")
@@ -368,9 +414,18 @@
   become: yes
   command: "kubeadm join {{ hostvars[groups['k8smasters'][0]]['ansible_default_ipv4']['address']}}:6443 --token {{ hostvars[groups['k8smasters'][0]]['token_result']['stdout'] }} --discovery-token-ca-cert-hash sha256:{{ hostvars[groups['k8smasters'][0]]['token_sha_result']['stdout'] }}"
 
-#- name: 'delete token'
-#  when: inventory_hostname == groups['k8smasters'][0] and token_result.rc == 0 and token_result.stdout != 0
-#  command: "kubeadm token delete {{ token_result.stdout }}"
+- name: 'install dashboard'
+  when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
+  command: 'kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/{{ dashboard_version }}/aio/deploy/recommended.yaml'
+
+
+- name: 'delete token'
+  when: inventory_hostname == groups['k8smasters'][0] and token_result.rc == 0 and token_result.stdout != 0 and delete_token
+  command: "kubeadm token delete {{ token_result.stdout }}"
+
+
+# https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/
+
 
 
 ## https://github.com/kairen/kubeadm-ansible
