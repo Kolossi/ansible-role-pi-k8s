@@ -4,19 +4,19 @@
 #all:
 #  hosts:
 #    k8s-pi-master:
-#      ansible_host: 192.168.77.240
+#      ansible_host: 192.168.0.240
 #      ansible_user: pi
 #      ansible_password: raspberry
 #    k8s-pi-worker1:
-#      ansible_host: 192.168.77.241
+#      ansible_host: 192.168.0.241
 #      ansible_user: pi
 #      ansible_password: raspberry
 #    k8s-pi-worker2:
-#      ansible_host: 192.168.77.242
+#      ansible_host: 192.168.0.242
 #      ansible_user: pi
 #      ansible_password: raspberry
 #    k8s-pi-worker3:
-#      ansible_host: 192.168.77.243
+#      ansible_host: 192.168.0.243
 #      ansible_user: pi
 #      ansible_password: raspberry
 #  children:
