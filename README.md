@@ -33,6 +33,10 @@ To limit to certain hosts use e.g.
 ansible-playbook pi-k8s_playbook.yml -l k8s-pi-master
 ```
 
+Once all workers joined, to delete join token on master, use:
+```
+ansible-playbook pi-k8s_playbook.yml --tags=delete_token
+```
 Reset
 -----
 

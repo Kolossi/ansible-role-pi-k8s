@@ -379,7 +379,7 @@
   when: inventory_hostname == groups['k8smasters'][0]
   register: token_result
   shell: "kubeadm token list | grep 'kubeadm init' | cut -f1 -d' '"
-  tags: always, nodecheck
+  tags: always, nodecheck, delete_token
 
 - name: 'get token sha'
   when: inventory_hostname == groups['k8smasters'][0]
@@ -420,8 +420,9 @@
 
 
 - name: 'delete token'
-  when: inventory_hostname == groups['k8smasters'][0] and token_result.rc == 0 and token_result.stdout != 0 and delete_token
+  when: inventory_hostname == groups['k8smasters'][0] and token_result.rc == 0 and token_result.stdout != 0
   command: "kubeadm token delete {{ token_result.stdout }}"
+  tags: delete_token, never
 
 
 # https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/

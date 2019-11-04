@@ -7,10 +7,10 @@ galaxy_info:
 
   min_ansible_version: 2.4
 
-   platforms:
-   - name: Raspbian Buster
-     versions:
-     - 2019-09-26
+  platforms:
+  - name: Raspbian Buster
+    versions:
+    - 2019-09-26
 
   galaxy_tags: 
     - raspberry
