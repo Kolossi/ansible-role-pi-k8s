@@ -418,6 +418,38 @@
   when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
   command: 'kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/{{ dashboard_version }}/aio/deploy/recommended.yaml'
 
+# multiline command - thanks: https://stackoverflow.com/a/40230416/2738122
+- name: 'create dashboard ServiceAccount'
+  when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
+  shell:
+    cmd: |
+      cat <<EOF | kubectl apply -f -
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: admin-user
+        namespace: kubernetes-dashboard
+      EOF
+
+- name: 'create dashboard ClusterRoleBinding'
+  when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
+  shell:
+    cmd: |
+      cat <<EOF | kubectl apply -f -
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: admin-user
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: cluster-admin
+      subjects:
+      - kind: ServiceAccount
+        name: admin-user
+        namespace: kubernetes-dashboard
+      EOF
+  
 
 - name: 'delete token'
   when: inventory_hostname == groups['k8smasters'][0] and token_result.rc == 0 and token_result.stdout != 0
