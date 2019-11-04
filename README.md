@@ -33,6 +33,11 @@ To limit to certain hosts use e.g.
 ansible-playbook pi-k8s_playbook.yml -l k8s-pi-master
 ```
 
+Reset
+-----
+
+To reset the cluster and remove kubernetes & docker see [this role](https://github.com/Kolossi/ansible-role-pi-k8s-reset)
+
 License
 -------
 
