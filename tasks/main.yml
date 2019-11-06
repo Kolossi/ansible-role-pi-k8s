@@ -71,6 +71,36 @@
     line: '\1 cgroup_enable=memory'
     backrefs: yes
 
+# see https://github.com/raspberrypi/firmware/blob/ed238d3329e39a68bde03bbc2dfc293c0c3dc93a/boot/overlays/README#L533
+- name: 'disable bluetooth devicetree'
+  register: config_disable_bt_dt_result
+  when: disable_bluetooth
+  become: yes
+  lineinfile:
+    path: /boot/cmdline.txt
+    regexp: '^(((?! dtoverlay=disable-bt).)*$)'
+    line: '\1 dtoverlay=disable-bt'
+    backrefs: yes
+
+- name: 'disable bluetooth modem'
+  register: config_disable_bt_modem_result
+  when: disable_bluetooth
+  become: yes
+  systemd:
+    name: hciuart
+    enabled: no
+    state: stopped
+
+- name: 'disable wifi'
+  register: config_disable_wifi_result
+  when: disable_wifi
+  become: yes
+  lineinfile:
+    path: /boot/cmdline.txt
+    regexp: '^(((?! dtoverlay=disable-wifi).)*$)'
+    line: '\1 dtoverlay=disable-wifi'
+    backrefs: yes
+
 - name: 'check if swap enabled'
   register: swapcheck_result
   shell: "free -m | grep Swap:"
@@ -112,22 +142,33 @@
     state: present
 
 - name: 'reboot after initial setup'
-  when: bootwait_result.changed or hostname_result.changed or hosts_result.changed or config_cgroup_enable_cpuset_result.changed or config_cgroup_memory_result.changed or config_cgroup_enable_memory_result.changed or tmp_ram_result.changed or log_ram_result.changed
+  when: |
+    bootwait_result.changed
+      or hostname_result.changed
+      or hosts_result.changed
+      or config_cgroup_enable_cpuset_result.changed
+      or config_cgroup_memory_result.changed
+      or config_cgroup_enable_memory_result.changed
+      or tmp_ram_result.changed
+      or log_ram_result.changed
+      or (disable_wifi and config_disable_wifi_result.changed)
+      or (disable_bluetooth and (config_disable_bt_dt_result.changed or config_disable_bt_modem_result.changed))
   become: yes
   reboot:
 
-- name: 'install aptitude'
-  become: yes
-  register: aptitude_result
-  apt:
-    update_cache: yes
-    cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
-    name: aptitude
+#- name: 'install aptitude'
+#  become: yes
+#  register: aptitude_result
+#  apt:
+#    update_cache: yes
+#    cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
+#    name: aptitude
 
 - name: 'Upgrade all packages to the latest version'
   become: yes
   register: upgrade_result
   apt:
+    force_apt_get: yes # there's no need to use aptitude
     update_cache: yes
     cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
     name: "*"
@@ -137,9 +178,11 @@
   become: yes
   register: autoremove_result
   apt:
+    force_apt_get: yes # there's no need to use aptitude
     autoremove: yes
+
 - name: 'reboot after apt updates'
-  when: aptitude_result.changed or upgrade_result.changed or autoremove_result.changed
+  when: upgrade_result.changed or autoremove_result.changed #or aptitude_result.changed 
   become: yes
   reboot:
 
@@ -156,15 +199,19 @@
 - name: 'setup apt over https'
   become: yes
   apt:
+    force_apt_get: yes # there's no need to use aptitude
     name: ['apt-transport-https', 'ca-certificates', 'curl', 'gnupg2', 'software-properties-common']
     state: present
     install_recommends: no
 
 - name: 'add docker gpg key'
   become: yes
-  shell: "curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add -"
-  args:
-    warn: no
+  apt_key:
+    url: https://download.docker.com/linux/debian/gpg
+    state: present
+#  shell: "curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add -"
+#  args:
+#    warn: no # prevent warning about curl
     
 - name: "add docker repo"
   become: yes
@@ -178,6 +225,7 @@
   become: yes
   register: install_docker_result
   apt:
+    force_apt_get: yes # there's no need to use aptitude
     name: ['containerd.io={{ containerdio_version }}', 'docker-ce-cli={{ docker_ce_cli_version }}', 'docker-ce={{ docker_ce_version }}']
     state: present
     install_recommends: no
@@ -279,6 +327,7 @@
   become: yes
   register: addkey_result
   apt:
+    force_apt_get: yes # there's no need to use aptitude
     update_cache: yes
   when: aptkey_result.changed
 
@@ -286,6 +335,7 @@
   become: yes
   register: k8s_install_result
   apt:
+    force_apt_get: yes # there's no need to use aptitude
     update_cache: yes
     cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
     name: 'kubeadm={{ kubeadm_version }}'
@@ -331,6 +381,7 @@
 
 - name: 'kubeadm init'
   when: inventory_hostname in groups['k8smasters']
+  register: kubeadm_result
   any_errors_fatal: yes
   become: yes
   # cidr required for flannel, see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
@@ -350,8 +401,19 @@
     cmd: "sudo cp -n /etc/kubernetes/admin.conf $HOME/.kube/config && sudo chown $(id -u):$(id -g) $HOME/.kube/config"
     creates: "{{ ansible_env.HOME }}/.kube/config"
   args:
-    warn: no
+    warn: no #we have to use actual sudo to reliably get the user and group id
+
+- name: 'retrieve kube config to local'
+  when: inventory_hostname in groups['k8smasters']
+  fetch:
+    src: "{{ ansible_env.HOME }}/.kube/config"
+    dest: "{{ local_kubeconfig_filename }}"
+    flat: yes
   
+- name: 'wait for all control plane pods to come up'
+  when: inventory_hostname == groups['k8smasters'][0] and kubeadm_result.changed
+  command: 'kubectl wait --for=condition=ready pods -A --all'
+
 - name: 'setup iptables bridging'
   when: inventory_hostname in groups['k8smasters']
   become: yes
@@ -370,10 +432,17 @@
   failed_when: flannel_check_result.rc != 0 and flannel_check_result.rc != 1
   ignore_errors: true
 
+
+# thanks: https://kubedge.cloud/pi_cluster/docker_kubernetes/children/2018-07-14-a/
 - name: 'install flannel'
   when: inventory_hostname in groups['k8smasters'] and flannel_check_result.rc != 0
+  any_errors_fatal: yes
   # see latest commit sha in https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
-  command: "kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/2140ac876ef134e0ed5af15c65e414cf26827915/Documentation/kube-flannel.yml"
+  shell:
+#    cmd: 'curl -fsSL https://raw.githubusercontent.com/coreos/flannel/{{ flannel_version }}/Documentation/kube-flannel.yml | sed "s/amd64/arm/g" | sed "s/flanneld/flanneld --iface=eth0/g" | kubectl apply -f -'
+    cmd: 'curl -fsSL https://raw.githubusercontent.com/coreos/flannel/{{ flannel_version }}/Documentation/kube-flannel.yml | sed "s/flanneld/flanneld --iface=eth0/g" | kubectl apply -f -'
+  args:
+   warn: no
 
 - name: 'get token'
   when: inventory_hostname == groups['k8smasters'][0]
@@ -387,11 +456,11 @@
   shell: "openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //'"
   tags: always, nodecheck
 
-# https://stackoverflow.com/a/52335566/2738122
-- name: 'taint master'
-  when: inventory_hostname == groups['k8smasters'][0]
-  become: yes
-  command: kubectl taint nodes --all node-role.kubernetes.io/master-
+## following believed no longer necessary
+## https://stackoverflow.com/a/52335566/2738122
+#- name: 'taint master'
+#  when: inventory_hostname == groups['k8smasters'][0]
+#  command: kubectl taint nodes --all node-role.kubernetes.io/master-
 
 - name: 'check for joined node'
   when: inventory_hostname in groups['k8sworkers']
@@ -409,10 +478,18 @@
     msg: "Worker join required, but token information not found - was master included in hosts?"
   tags: always, nodecheck
 
+- name: 'wait for all flannel pods to come up if just installed'
+  when: inventory_hostname == groups['k8smasters'][0] and flannel_check_result.rc != 0
+  command: 'kubectl wait --for=condition=ready pods -A --all'
+
 - name: 'join cluster'
   when: inventory_hostname in groups['k8sworkers'] and node_check_result.rc != 0
   become: yes
   command: "kubeadm join {{ hostvars[groups['k8smasters'][0]]['ansible_default_ipv4']['address']}}:6443 --token {{ hostvars[groups['k8smasters'][0]]['token_result']['stdout'] }} --discovery-token-ca-cert-hash sha256:{{ hostvars[groups['k8smasters'][0]]['token_sha_result']['stdout'] }}"
+
+- name: 'wait for all nodes to come up'
+  when: inventory_hostname == groups['k8smasters'][0]
+  command: 'kubectl wait --for=condition=ready nodes --all'
 
 - name: 'install dashboard'
   when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
@@ -450,6 +527,16 @@
         namespace: kubernetes-dashboard
       EOF
   
+- name: 'get dashboard token'
+  when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
+  register: dashboard_token_result
+  shell: "kubectl -n kubernetes-dashboard describe secret $(kubectl -n kubernetes-dashboard get secret | grep admin-user | awk '{print $1}') | grep '^token:' | awk '{print $2}'"
+  failed_when: dashboard_token_result.rc != 0 or dashboard_token_result.stdout == ''
+
+- name: 'show dashboard token'
+  when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
+  debug:
+     msg: "{{ dashboard_token_result.stdout }}"
 
 - name: 'delete token'
   when: inventory_hostname == groups['k8smasters'][0] and token_result.rc == 0 and token_result.stdout != 0
