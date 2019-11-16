@@ -1,0 +1,59 @@
+---
+
+- name: 'check for k8s images'
+  when: inventory_hostname in groups['k8smasters']
+  register: image_check_result
+  become: yes
+  shell: "docker image ls k8s.gcr.io/kube-apiserver | grep k8s.gcr.io/kube-apiserver"
+  changed_when: false
+  failed_when: image_check_result.rc != 0 and image_check_result.rc != 1
+  ignore_errors: true
+  
+- name: 'pull k8s images'
+  when: inventory_hostname in groups['k8smasters'] and image_check_result.rc != 0
+  become: yes
+  command: "kubeadm config images pull"
+
+- name: 'kubeadm init'
+  when: inventory_hostname in groups['k8smasters']
+  register: kubeadm_result
+  any_errors_fatal: yes
+  become: yes
+  # cidr required for flannel, see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
+  # maybe see also https://blog.hypriot.com/post/setup-kubernetes-raspberry-pi-cluster/
+  shell:
+    cmd: "kubeadm init --token-ttl=0 {{ '--pod-network-cidr=10.244.0.0/16' if (flannel_version is defined) else '' }}"
+    creates: /etc/kubernetes/manifests/kube-apiserver.yaml
+
+- name: 'create kube config'
+  when: inventory_hostname in groups['k8smasters']
+  shell:
+    cmd: "sudo cp -n /etc/kubernetes/admin.conf $HOME/.kube/config && sudo chown $(id -u):$(id -g) $HOME/.kube/config"
+    creates: "{{ ansible_env.HOME }}/.kube/config"
+  args:
+    warn: no #we have to use actual sudo to reliably get the user and group id
+
+- name: 'retrieve kube config to local'
+  when: inventory_hostname in groups['k8smasters']
+  fetch:
+    src: "{{ ansible_env.HOME }}/.kube/config"
+    dest: "{{ local_kubeconfig_filename }}"
+    flat: yes
+  
+- name: 'pause 2 mins for kubernetes master to begin start up'
+  when: inventory_hostname == groups['k8smasters'][0] and kubeadm_result.changed
+  wait_for:
+    timeout: 120
+  delegate_to: localhost
+  
+- name: 'wait for all control plane pods (except dns) to come up'
+  when: inventory_hostname == groups['k8smasters'][0] and kubeadm_result.changed
+  command: "kubectl wait --for=condition=ready pods -n kube-system --selector='k8s-app!=kube-dns'"
+
+## following believed no longer necessary
+## https://stackoverflow.com/a/52335566/2738122
+## (seems to be allow scheduling ON master)
+#- name: 'taint master'
+#  when: inventory_hostname == groups['k8smasters'][0]
+#  command: kubectl taint nodes --all node-role.kubernetes.io/master-
+

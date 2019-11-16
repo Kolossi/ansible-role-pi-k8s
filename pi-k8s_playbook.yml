@@ -10,6 +10,7 @@
     docker_ce_cli_version: "5:18.09.9~3-0~debian-buster"
     docker_ce_version:     "5:18.09.9~3-0~debian-buster"
 
+# omitting flannel_version will result in weave being installed
 # see latest commit sha in https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
     flannel_version:       "2140ac876ef134e0ed5af15c65e414cf26827915"
 
@@ -20,6 +21,11 @@
     disable_bluetooth: yes
 
     local_kubeconfig_filename: "~/.kube/pi-k8s-kubeconfig.yaml"
+
+# uncomment the following and populate to have a common nfs volume mounted on each host
+#    nfs_mountpoint:   "/{my-mountpoint}"
+#    nfs_mount_source: "{my-nfs-server-ip}:{my-nfs-mount}"
+
   roles:
     - pi-k8s
       

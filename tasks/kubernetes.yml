@@ -1,0 +1,63 @@
+---
+
+- name: 'update apt sources'
+  become: yes
+  lineinfile:
+    path: /etc/apt/sources.list.d/kubernetes.list
+    line: "deb http://apt.kubernetes.io/ kubernetes-xenial main"
+    create: yes
+
+- name: 'add google apt key'
+  become: yes
+  register: aptkey_result
+  apt_key:
+    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+    state: present
+
+- name: 'update apt cache after key add'
+  become: yes
+  register: addkey_result
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    update_cache: yes
+  when: aptkey_result.changed
+
+- name: 'install kubeadm and kubectl'
+  become: yes
+  register: k8s_install_result
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    update_cache: yes
+    cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
+    name: 'kubeadm={{ kubeadm_version }}'
+
+- name: hold kubeadm
+  become: yes
+  command: apt-mark hold kubeadm
+  when: '"kubeadm" not in held_packages.stdout and k8s_install_result.changed'
+
+- name: hold kubectl
+  become: yes
+  command: apt-mark hold kubectl
+  when: '"kubectl" not in held_packages.stdout and k8s_install_result.changed'
+
+- name: hold kubelet
+  become: yes
+  command: apt-mark hold kubelet
+  when: '"kubelet" not in held_packages.stdout and k8s_install_result.changed'
+
+- name: hold kubernetes-cni
+  become: yes
+  command: apt-mark hold kubernetes-cni
+  when: '"kubernetes-cni" not in held_packages.stdout and k8s_install_result.changed'
+ 
+- name: 'reboot after k8s install'
+  when: k8s_install_result.changed
+  become: yes
+  reboot:
+
+- name: 'create .kube dir'
+  file:
+    path: "{{ ansible_env.HOME }}/.kube"
+    state: directory
+

@@ -1,0 +1,25 @@
+---
+
+- name: 'check for cni'
+  when: inventory_hostname in groups['k8smasters']
+  register: cni_check_result
+# for jjinja ternary, thanks: https://stackoverflow.com/questions/42660653/how-can-i-use-a-condition-to-set-a-variable-value-in-ansible
+  shell: "kubectl get pods -n kube-system | grep 'flannel'"
+  changed_when: false
+  failed_when: cni_check_result.rc != 0 and cni_check_result.rc != 1
+  ignore_errors: true
+  tags: cni,flannel
+
+# thanks: https://kubedge.cloud/pi_cluster/docker_kubernetes/children/2018-07-14-a/
+- name: 'install flannel'
+  when: inventory_hostname in groups['k8smasters'] and flannel_version is defined and cni_check_result.rc != 0
+  any_errors_fatal: yes
+  # see latest commit sha in https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
+  shell:
+#    cmd: 'curl -fsSL https://raw.githubusercontent.com/coreos/flannel/{{ flannel_version }}/Documentation/kube-flannel.yml | sed "s/amd64/arm/g" | sed "s/flanneld/flanneld --iface=eth0/g" | kubectl apply -f -'
+#    cmd: 'curl -fsSL https://raw.githubusercontent.com/coreos/flannel/{{ flannel_version }}/Documentation/kube-flannel.yml | sed "s/flanneld/flanneld --iface=eth0/g" | kubectl apply -f -'
+    cmd: 'curl -fsSL https://raw.githubusercontent.com/coreos/flannel/{{ flannel_version }}/Documentation/kube-flannel.yml | kubectl apply -f -'
+  args:
+   warn: no
+  tags: cni,flannel
+

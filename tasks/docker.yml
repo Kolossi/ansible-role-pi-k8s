@@ -1,0 +1,122 @@
+---
+
+## can't run the following right now, because it installs latest docker
+## which is not compatible with latest kubernetes
+#- name: 'install docker'
+#  register: install_docker_result
+#  shell:
+#    cmd: "curl -sSL get.docker.com | sh"
+#    creates: /usr/bin/docker
+#  args:
+#    warn: false # prevent warning about curl
+
+- name: 'setup apt over https'
+  become: yes
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    name: ['apt-transport-https', 'ca-certificates', 'curl', 'gnupg2', 'software-properties-common']
+    state: present
+    install_recommends: no
+
+- name: 'add docker gpg key'
+  become: yes
+  apt_key:
+    url: https://download.docker.com/linux/debian/gpg
+    state: present
+    
+- name: "add docker repo"
+  become: yes
+  register: add_docker_repo_result
+  apt_repository:
+    repo: deb [arch=armhf] https://download.docker.com/linux/debian buster stable
+    state: present
+    update_cache: yes
+
+- name: 'install docker'
+  become: yes
+  register: install_docker_result
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    name: ['containerd.io={{ containerdio_version }}', 'docker-ce-cli={{ docker_ce_cli_version }}', 'docker-ce={{ docker_ce_version }}']
+    state: present
+    install_recommends: no
+
+- name: 'Get held packages'
+  become: yes
+  command: apt-mark showhold
+  register: held_packages
+  changed_when: false
+
+- name: 'hold containerd.io'
+  become: yes
+  command: apt-mark hold containerd.io
+  when: '"containerd.io" not in held_packages.stdout and install_docker_result.changed'
+
+- name: 'hold docker-ce'
+  become: yes
+  command: apt-mark hold docker-ce
+  when: '"docker-ce" not in held_packages.stdout and install_docker_result.changed'
+
+- name: hold docker-ce-cli
+  become: yes
+  command: apt-mark hold docker-ce-cli
+  when: '"docker-ce-cli" not in held_packages.stdout and install_docker_result.changed'
+ 
+- name: 'add pi user to docker group'
+  register: pi_user_result
+  become: yes
+  user:
+    name: pi
+    append: yes
+    groups: docker
+
+- name: 'reconnect to pickup group membership'
+  meta: reset_connection  # to pickup new group membership, thanks: https://stackoverflow.com/questions/26677064/create-and-use-group-without-restart
+
+# thanks: http://www.mydailytutorials.com/ansible-create-files/
+- name: 'populate daemon.json'
+  register: daemon_json_result
+  become: yes
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "exec-opts": ["native.cgroupdriver=systemd"],
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "100m"
+        },
+        "storage-driver": "overlay2"
+      }
+
+## thanks: http://www.mydailytutorials.com/ansible-create-directory/
+## ... but doesnt seem to be required
+#- name: 'create docker.service.d directory'
+#  register: create_docker_service_directory
+#  become: yes
+#  file:
+#    path: /etc/systemd/system/docker.service.d
+#    state: directory
+
+- name: 'systemctl restart docker'
+  become: yes
+  when: pi_user_result.changed or daemon_json_result.changed
+# or create_docker_service_directory.changed
+  systemd:
+    state: restarted
+    name: docker
+    daemon_reload: yes
+    
+- name: 'test docker'
+  become: yes
+  when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed
+# or create_docker_service_directory.changed
+  shell:
+    cmd: "docker run armhf/hello-world"
+
+- name: 'reboot after docker install'
+  when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed
+# or create_docker_service_directory.changed
+  become: yes
+  reboot:
+

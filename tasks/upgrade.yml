@@ -1,0 +1,32 @@
+---
+
+#- name: 'install aptitude'
+#  become: yes
+#  register: aptitude_result
+#  apt:
+#    update_cache: yes
+#    cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
+#    name: aptitude
+
+- name: 'Upgrade all packages to the latest version'
+  become: yes
+  register: upgrade_result
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    update_cache: yes
+    cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
+    name: "*"
+    state: latest
+
+- name: 'Remove dependencies that are no longer required'
+  become: yes
+  register: autoremove_result
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    autoremove: yes
+
+- name: 'reboot after apt updates'
+  when: upgrade_result.changed or autoremove_result.changed #or aptitude_result.changed 
+  become: yes
+  reboot:
+
