@@ -1,0 +1,120 @@
+---
+
+- name: "install rsync"
+  become: yes
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    name: "rsync"
+    state: present
+    install_recommends: no
+
+- name: "enable rpcbind"
+  systemd:
+    name: rpcbind
+    enabled: yes
+    state: started
+
+- name: "add nfs guest user"
+  user:
+    name: "{{ nfs_guest_username }}"
+    passwd: "!"
+    uid: "{{ nfs_guest_uid }}"
+    group: "pi"
+  when: (nfs_guest_username|default('')) != '' and (nfs_guest_uid|default('')) != ''
+
+- name: "check for existing nfs root"
+  set_fact:
+    nfs_root: yes
+  no_log: true
+  with_items: "{{ ansible_mounts }}"
+  when: "item.mount='/' and 'nfs' in item.fstype"
+
+## thanks: https://docs.ansible.com/ansible/latest/modules/tempfile_module.html
+##       & https://docs.ansible.com/ansible/latest/user_guide/playbooks_blocks.html
+- name: "setup nfs root"
+  become: yes
+  block:
+    - name: "create temp nfs mount"
+      become: yes
+      tempfile:
+        state: directory
+        suffix: "nfstemp"
+        register: nfstemp
+        path: "/"
+
+    - name: "mount nfs root source"
+      mount:
+        path: "{{ nfstemp.path }}"
+        src: "{{ nfs_root_source | replace('{{ inventory_hostname }}',inventory_hostname) }}"
+        fstype: nfs
+        opts: defaults
+        state: mounted
+      register: nfsmount
+
+    - name: "rsync copy root partition"
+      register: rsync
+      become: yes
+      command: "rsync -xaq --exclude {{ nfstemp.path }} / {{ nfstemp.path }}"
+
+    - name: "comment out sd card root mount"
+      lineinfile:
+        path: "{{ nfstemp.path}}/etc/fstab"
+        regexp: "^(PARTUUID=[0-9a-zA-Z\-]*  / .*)$"
+        line: "#\1"
+        backrefs: yes
+  always:
+    - name: "unmount nfs root source"
+      become: yes
+      mount:
+        path: "{{ nfstemp.path }}"
+        state: absent
+      when: nfsmount is defined and not nfsmount.failed
+
+    - name: "remove temp nfs mount"
+      become: yes
+      file:
+        path: "{{ nfstemp.path }}"
+        state: absent
+      when: nfstemp.path is defined
+  when: CHECK IT HASNT BEEN DONE ALREADY
+
+- name: "remove rootfstype to cmdline.txt"
+  register: type_cmd
+  become: yes
+  lineinfile:
+    path: /boot/cmdline.txt
+    regexp: '^(.*)(rootfstype=ext4 *)(.*)$'
+    line: '\1\2'
+    backrefs: yes   
+
+- name: "remove sd root partition to cmdline.txt"
+  register: sd_cmd
+  become: yes
+  lineinfile:
+    path: /boot/cmdline.txt
+    regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z\-]* *)(.*)$'
+    line: '\1\2'
+    backrefs: yes   
+
+- name: 'add nfs root to cmdline.txt'
+  register: nfs_cmd
+  become: yes
+  lineinfile:
+    path: /boot/cmdline.txt
+    regexp: "^(((?! root=/dev/nfs nfsroot={{ nfs_root_source | replace('{{ inventory_hostname }}',inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)"
+    line: "\1 root=/dev/nfs nfsroot={{ nfs_root_source | replace('{{ inventory_hostname }}',inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)"
+    backrefs: yes
+
+- name: 'add dhcp to cmdline.txt'
+  register: dhcp_cmd
+  become: yes
+  lineinfile:
+    path: /boot/cmdline.txt
+    regexp: '^(((?! ip=dhcp).)*$)'
+    line: '\1 ip=dhcp'
+    backrefs: yes
+
+- name: 'reboot after setting up nfs root'
+  become: yes
+  reboot:
+  when: rsync|default(no) or type_cmd.changed or sd_cmd.changed or sd_cmd.change or dhcp_cmd.changed

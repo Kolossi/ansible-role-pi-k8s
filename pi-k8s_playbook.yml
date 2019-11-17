@@ -11,10 +11,10 @@
     docker_ce_version:     "5:18.09.9~3-0~debian-buster"
 
 # omitting flannel_version will result in weave being installed
-# see latest commit sha in https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
+# see latest flannel commit sha in https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
     flannel_version:       "2140ac876ef134e0ed5af15c65e414cf26827915"
 
-    install_dashboard: yes
+    install_dashboard:     yes
     dashboard_version:     "v2.0.0-beta5"
 
     disable_wifi: yes
@@ -22,9 +22,24 @@
 
     local_kubeconfig_filename: "~/.kube/pi-k8s-kubeconfig.yaml"
 
-# uncomment the following and populate to have a common nfs volume mounted on each host
-#    nfs_mountpoint:   "/{my-mountpoint}"
-#    nfs_mount_source: "{my-nfs-server-ip}:{my-nfs-mount}"
+## move tmp/log storage off sd to ram
+## if using nfs root, best to leave writing to root
+    tmp_ram: no
+    log_ram: no
+
+## convert pi to use root fs on an nfs host, not the sd card
+## can include "{{ inventory_hostname }}" which will be replaced as expected
+#     nfs_root_source: "[my-nfs-server-ip]:/[my-mount-path]/{{ inventory_hostname }}"
+
+## add a user & uid to the pi so that files created on the remote with a given user
+## appear "nicely" in ls
+#     nfs_guest_username: "nfshostguest"
+#     nfs_guest_uid: "1025"
+
+## uncomment the following and populate to have a common nfs data volume mounted on each host
+## k8s should generally use per-pod volumes in manifest, so no need for his global approach
+#    nfs_data_mountpoint:   "/[my-mountpoint]"
+#    nfs_data_source: "[my-nfs-server-ip]:[my-nfs-mount]"
 
   roles:
     - pi-k8s

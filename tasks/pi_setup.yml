@@ -116,6 +116,7 @@
 - name: 'store /tmp in ram'
   become: yes
   register: tmp_ram_result
+  when: (tmpram | default(false))
   mount:
     src: tmpfs
     path: /tmp
@@ -125,6 +126,7 @@
     
 - name: 'store /var/log in ram'
   become: yes
+  when: (log_ram | default(false))
   register: log_ram_result
   mount:
     src: tmpfs
@@ -133,12 +135,12 @@
     opts: defaults,noatime,size=64m
     state: present
 
-- name: 'setup nfs mount'
-  when: nfs_mountpoint is defined and nfs_mount_source is defined
+- name: 'setup nfs data mount'
+  when: nfs_data_mountpoint is defined and nfs_data_source is defined
   become: yes
   mount:
-    src: "{{ nfs_mount_source }}"
-    path: "{{ nfs_mountpoint }}"
+    src: "{{ nfs_data_source }}"
+    path: "{{ nfs_data_mountpoint }}"
     fstype: nfs
     opts: defaults
     state: mounted
