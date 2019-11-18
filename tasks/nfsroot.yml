@@ -9,6 +9,7 @@
     install_recommends: no
 
 - name: "enable rpcbind"
+  become: yes
   systemd:
     name: rpcbind
     enabled: yes
@@ -24,10 +25,10 @@
 
 - name: "check for existing nfs root"
   set_fact:
-    nfs_root: yes
+    nfs_root_found: yes
   no_log: true
   with_items: "{{ ansible_mounts }}"
-  when: "item.mount='/' and 'nfs' in item.fstype"
+  when: "item.mount=='/' and 'nfs' in item.fstype"
 
 ## thanks: https://docs.ansible.com/ansible/latest/modules/tempfile_module.html
 ##       & https://docs.ansible.com/ansible/latest/user_guide/playbooks_blocks.html
@@ -59,8 +60,8 @@
     - name: "comment out sd card root mount"
       lineinfile:
         path: "{{ nfstemp.path}}/etc/fstab"
-        regexp: "^(PARTUUID=[0-9a-zA-Z\-]*  / .*)$"
-        line: "#\1"
+        regexp: '^((PARTUUID=[0-9a-zA-Z-]*  / .*)$)'
+        line: '#\1'
         backrefs: yes
   always:
     - name: "unmount nfs root source"
@@ -76,15 +77,15 @@
         path: "{{ nfstemp.path }}"
         state: absent
       when: nfstemp.path is defined
-  when: CHECK IT HASNT BEEN DONE ALREADY
+  when: nfs_root_found is not defined
 
 - name: "remove rootfstype to cmdline.txt"
   register: type_cmd
   become: yes
   lineinfile:
     path: /boot/cmdline.txt
-    regexp: '^(.*)(rootfstype=ext4 *)(.*)$'
-    line: '\1\2'
+    regexp: '^(.*)(rootfstype=ext4 *)(.*$)'
+    line: '\1\3'
     backrefs: yes   
 
 - name: "remove sd root partition to cmdline.txt"
@@ -92,8 +93,8 @@
   become: yes
   lineinfile:
     path: /boot/cmdline.txt
-    regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z\-]* *)(.*)$'
-    line: '\1\2'
+    regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z-]* *)(.*$)'
+    line: '\1\3'
     backrefs: yes   
 
 - name: 'add nfs root to cmdline.txt'
@@ -101,8 +102,8 @@
   become: yes
   lineinfile:
     path: /boot/cmdline.txt
-    regexp: "^(((?! root=/dev/nfs nfsroot={{ nfs_root_source | replace('{{ inventory_hostname }}',inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)"
-    line: "\1 root=/dev/nfs nfsroot={{ nfs_root_source | replace('{{ inventory_hostname }}',inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)"
+    regexp: '^(((?! root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)'
+    line: '\1 root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)'
     backrefs: yes
 
 - name: 'add dhcp to cmdline.txt'

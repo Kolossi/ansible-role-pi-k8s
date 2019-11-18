@@ -3,6 +3,9 @@
 - import_tasks: pi_setup.yml
   tags: pi_setup
 
+- import_tasks: nfsroot.yml
+  tags: nfsroot
+
 - import_tasks: upgrade.yml
   tags: upgrade
 
@@ -10,16 +13,16 @@
   tags: docker
 
 - import_tasks: kubernetes.yml
-  tags: kubernetes,k8s
+  tags: kubernetes
 
 - import_tasks: kubernetes_master.yml
-  tags: kubernetes,k8s,kubernetes_master,k8s_master
+  tags: kubernetes,kubernetes_master
 
 - include_tasks: "cni_{{ 'flannel' if (flannel_version is defined) else 'weave' }}.yml"
   tags: cni,flannel,weave
 
 - import_tasks: kubernetes_worker.yml
-  tags: kubernetes,k8s,kubernetes_worker,k8s_worker
+  tags: kubernetes,kubernetes_worker
 
 - import_tasks: dashboard.yml
   tags: dashboard
