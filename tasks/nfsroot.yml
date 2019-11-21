@@ -16,6 +16,7 @@
     state: started
 
 - name: "add nfs guest user"
+  become: yes
   user:
     name: "{{ nfs_guest_username }}"
     passwd: "!"
@@ -40,10 +41,11 @@
       tempfile:
         state: directory
         suffix: "nfstemp"
-        register: nfstemp
-        path: "/"
+        path: "/home/pi"
+      register: nfstemp
 
     - name: "mount nfs root source"
+      become: yes
       mount:
         path: "{{ nfstemp.path }}"
         src: "{{ nfs_root_source | replace('{{ inventory_hostname }}',inventory_hostname) }}"
@@ -53,11 +55,12 @@
       register: nfsmount
 
     - name: "rsync copy root partition"
-      register: rsync
       become: yes
+      register: rsync
       command: "rsync -xaq --exclude {{ nfstemp.path }} / {{ nfstemp.path }}"
 
     - name: "comment out sd card root mount"
+      become: yes
       lineinfile:
         path: "{{ nfstemp.path}}/etc/fstab"
         regexp: '^((PARTUUID=[0-9a-zA-Z-]*  / .*)$)'
@@ -80,8 +83,8 @@
   when: nfs_root_found is not defined
 
 - name: "remove rootfstype to cmdline.txt"
-  register: type_cmd
   become: yes
+  register: type_cmd
   lineinfile:
     path: /boot/cmdline.txt
     regexp: '^(.*)(rootfstype=ext4 *)(.*$)'
@@ -89,8 +92,8 @@
     backrefs: yes   
 
 - name: "remove sd root partition to cmdline.txt"
-  register: sd_cmd
   become: yes
+  register: sd_cmd
   lineinfile:
     path: /boot/cmdline.txt
     regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z-]* *)(.*$)'
@@ -98,8 +101,8 @@
     backrefs: yes   
 
 - name: 'add nfs root to cmdline.txt'
-  register: nfs_cmd
   become: yes
+  register: nfs_cmd
   lineinfile:
     path: /boot/cmdline.txt
     regexp: '^(((?! root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)'
@@ -107,8 +110,8 @@
     backrefs: yes
 
 - name: 'add dhcp to cmdline.txt'
-  register: dhcp_cmd
   become: yes
+  register: dhcp_cmd
   lineinfile:
     path: /boot/cmdline.txt
     regexp: '^(((?! ip=dhcp).)*$)'
@@ -118,4 +121,4 @@
 - name: 'reboot after setting up nfs root'
   become: yes
   reboot:
-  when: rsync|default(no) or type_cmd.changed or sd_cmd.changed or sd_cmd.change or dhcp_cmd.changed
+  when: (nfs_root_found is not defined and not rsync.failed) or type_cmd.changed or sd_cmd.changed or nfs_cmd.changed or dhcp_cmd.changed

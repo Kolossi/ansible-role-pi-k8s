@@ -1,0 +1,139 @@
+---
+
+- name: "install open-iscsi"
+  become: yes
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    name: "open-iscsi"
+    state: present
+    install_recommends: no
+
+- name: "enable iscsi service"
+  become: yes
+  systemd:
+    name: iscsi.service
+    enabled: yes
+    state: started
+
+- name: "check for existing iscsi root"
+  set_fact:
+    iscsi_root_found: yes
+  no_log: true
+  with_items: "{{ ansible_mounts }}"
+  when: "item.mount=='/' and 'nfs' in item.fstype"
+
+- name: "mount iscsi lun"
+  register: iscsimount
+  become: yes
+  open_iscsi:
+    discover: yes
+    login: yes
+    portal: "{{ iscsi_root_ip }}"
+    port: "{{ iscsi_root_port | default('3260') }}"
+    target: '{{ iscsi_root_iqn | replace("{{ inventory_hostname }}",inventory_hostname) }}'
+    node_auth: "CHAP"
+    node_user: "{{ iscsi_root_username }}"
+    node_pass: "{{ iscsi_root_password }}"
+
+- name: "find iscsi device"
+  set_fact:
+    iscsi_device: "{{ iscsimount.devicenodes[0] }}"
+
+######### see https://www.domoticz.com/forum/viewtopic.php?t=28797
+
+
+
+
+
+
+### thanks: https://docs.ansible.com/ansible/latest/modules/tempfile_module.html
+###       & https://docs.ansible.com/ansible/latest/user_guide/playbooks_blocks.html
+#- name: "setup nfs root"
+#  become: yes
+#  block:
+#    - name: "create temp nfs mount"
+#      become: yes
+#      tempfile:
+#        state: directory
+#        suffix: "nfstemp"
+#        path: "/home/pi"
+#      register: nfstemp
+#
+#    - name: "mount nfs root source"
+#      become: yes
+#      mount:
+#        path: "{{ nfstemp.path }}"
+#        src: "{{ nfs_root_source | replace('{{ inventory_hostname }}',inventory_hostname) }}"
+#        fstype: nfs
+#        opts: defaults
+#        state: mounted
+#      register: nfsmount
+#
+#    - name: "rsync copy root partition"
+#      become: yes
+#      register: rsync
+#      command: "rsync -xaq --exclude {{ nfstemp.path }} / {{ nfstemp.path }}"
+#
+#    - name: "comment out sd card root mount"
+#      become: yes
+#      lineinfile:
+#        path: "{{ nfstemp.path}}/etc/fstab"
+#        regexp: '^((PARTUUID=[0-9a-zA-Z-]*  / .*)$)'
+#        line: '#\1'
+#        backrefs: yes
+#  always:
+#    - name: "unmount nfs root source"
+#      become: yes
+#      mount:
+#        path: "{{ nfstemp.path }}"
+#        state: absent
+#      when: nfsmount is defined and not nfsmount.failed
+#
+#    - name: "remove temp nfs mount"
+#      become: yes
+#      file:
+#        path: "{{ nfstemp.path }}"
+#        state: absent
+#      when: nfstemp.path is defined
+#  when: nfs_root_found is not defined
+#
+#- name: "remove rootfstype to cmdline.txt"
+#  become: yes
+#  register: type_cmd
+#  lineinfile:
+#    path: /boot/cmdline.txt
+#    regexp: '^(.*)(rootfstype=ext4 *)(.*$)'
+#    line: '\1\3'
+#    backrefs: yes   
+#
+#- name: "remove sd root partition to cmdline.txt"
+#  become: yes
+#  register: sd_cmd
+#  lineinfile:
+#    path: /boot/cmdline.txt
+#    regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z-]* *)(.*$)'
+#    line: '\1\3'
+#    backrefs: yes   
+#
+#- name: 'add nfs root to cmdline.txt'
+#  become: yes
+#  register: nfs_cmd
+#  lineinfile:
+#    path: /boot/cmdline.txt
+#    regexp: '^(((?! root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)'
+#    line: '\1 root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)'
+#    backrefs: yes
+#
+#- name: 'add dhcp to cmdline.txt'
+#  become: yes
+#  register: dhcp_cmd
+#  lineinfile:
+#    path: /boot/cmdline.txt
+#    regexp: '^(((?! ip=dhcp).)*$)'
+#    line: '\1 ip=dhcp'
+#    backrefs: yes
+#
+#- name: 'reboot after setting up nfs root'
+#  become: yes
+#  reboot:
+#  when: (nfs_root_found is not defined and not rsync.failed) or type_cmd.changed or sd_cmd.changed or nfs_cmd.changed or dhcp_cmd.changed

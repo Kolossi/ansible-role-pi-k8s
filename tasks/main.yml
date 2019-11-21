@@ -6,6 +6,9 @@
 - import_tasks: nfsroot.yml
   tags: nfsroot
 
+- import_tasks: iscsiroot.yml
+  tags: iscsiroot
+
 - import_tasks: upgrade.yml
   tags: upgrade
 

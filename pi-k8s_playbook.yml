@@ -28,8 +28,16 @@
     log_ram: no
 
 ## convert pi to use root fs on an nfs host, not the sd card
+## (Note: docker does not support nfs)
 ## can include "{{ inventory_hostname }}" which will be replaced as expected
 #     nfs_root_source: "[my-nfs-server-ip]:/[my-mount-path]/{{ inventory_hostname }}"
+
+## convert pi to use root fs on an iscsi lun, not the sd card
+## can include "{{ inventory_hostname}}" which will be replaced as expected
+#    iscsi_root_ip: "[my-iscsi-host-ip]"
+#    iscsi_root_iqn: "iqn.2010-01.com.mydomain:host.Target-{{ inventory_hostname }}-Root"
+#    iscsi_root_username: "[chapuser]"
+#    iscsi_root_password: "[chappass]"
 
 ## add a user & uid to the pi so that files created on the remote with a given user
 ## appear "nicely" in ls

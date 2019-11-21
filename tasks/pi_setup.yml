@@ -116,7 +116,7 @@
 - name: 'store /tmp in ram'
   become: yes
   register: tmp_ram_result
-  when: (tmpram | default(false))
+  when: (tmp_ram | default(false))
   mount:
     src: tmpfs
     path: /tmp
