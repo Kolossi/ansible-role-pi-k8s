@@ -8,7 +8,7 @@
         cat > /etc/systemd/system/dhcpcd.service.d/wait.conf << EOF
         [Service]
         ExecStart=
-        ExecStart=/usr/lib/dhcpcd5/dhcpcd -q -w
+        ExecStart=/usr/lib/dhcpcd5/dhcpcd -q -w -4
         EOF
     creates: /etc/systemd/system/dhcpcd.service.d/wait.conf
 

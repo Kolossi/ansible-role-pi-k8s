@@ -3,11 +3,13 @@
 - import_tasks: pi_setup.yml
   tags: pi_setup
 
-- import_tasks: nfsroot.yml
-  tags: nfsroot
+- include_tasks: nfsroot.yml
+  tags: netroot, nfsroot
+  when: nfs_root_source is defined
 
-- import_tasks: iscsiroot.yml
-  tags: iscsiroot
+- include_tasks: iscsiroot.yml
+  tags: netroot, iscsiroot
+  when: iscsi_root_iqn is defined
 
 - import_tasks: upgrade.yml
   tags: upgrade

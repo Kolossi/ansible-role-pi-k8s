@@ -7,13 +7,25 @@
     name: "open-iscsi"
     state: present
     install_recommends: no
+  tags: iscsiroot,netroot
+
+- name: "disable ib_iser"
+  become: yes
+  register: iscsi_iser
+  lineinfile:
+    path: "/lib/modules-load.d/open-iscsi.conf"
+    regexp: '^(ib_iser)$'
+    line: '#\1'
+    backrefs: yes
+  tags: iscsiroot,netroot
 
 - name: "enable iscsi service"
   become: yes
   systemd:
     name: iscsi.service
     enabled: yes
-    state: started
+    state: "{{'restarted' if iscsi_iser.changed else 'started'}}"
+  tags: iscsiroot,netroot
 
 - name: "check for existing iscsi root"
   set_fact:
@@ -21,119 +33,195 @@
   no_log: true
   with_items: "{{ ansible_mounts }}"
   when: "item.mount=='/' and 'nfs' in item.fstype"
+  tags: iscsiroot,netroot
+
+- debug:
+    msg: "{{ ansible_mounts }}"
+  tags: iscsiroot,netroot
 
 - name: "mount iscsi lun"
   register: iscsimount
   become: yes
   open_iscsi:
+    auto_node_startup: yes
     discover: yes
     login: yes
     portal: "{{ iscsi_root_ip }}"
     port: "{{ iscsi_root_port | default('3260') }}"
     target: '{{ iscsi_root_iqn | replace("{{ inventory_hostname }}",inventory_hostname) }}'
     node_auth: "CHAP"
-    node_user: "{{ iscsi_root_username }}"
+    node_user: '{{ iscsi_root_username | replace("{{ inventory_hostname }}",inventory_hostname) | regex_replace("[^a-zA-Z0-9]","") }}'
     node_pass: "{{ iscsi_root_password }}"
+  tags: iscsiroot,netroot
 
 - name: "find iscsi device"
   set_fact:
     iscsi_device: "{{ iscsimount.devicenodes[0] }}"
+  tags: iscsiroot,netroot
 
-######### see https://www.domoticz.com/forum/viewtopic.php?t=28797
+- name: "make ext4 filesystem on iscsi device"
+  become: yes
+  register: mkfs_result
+  filesystem:
+    fstype: ext4
+    dev: "{{ iscsi_device }}"
+    resizefs: yes
+  tags: iscsiroot,netroot
 
+- name: "Get iscsi lun uuid"
+  become: yes
+  command: "lsblk --noheadings --output uuid {{ iscsi_device }}"
+  register: iscsi_uuid
+  changed_when: false
+  tags: iscsiroot,netroot
 
+- name: "Get initiator name"
+  become: yes
+  register: iscsi_initiator
+  shell: "cat /etc/iscsi/initiatorname.iscsi | grep -v '^##' | tail -1 | cut -d'=' -f2"
+  changed_when: false
+  tags: iscsiroot,netroot
 
+- name: "setup iscsi root"
+  become: yes
+  block:
+    - name: "create temp iscsi mountpoint"
+      become: yes
+      tempfile:
+        state: directory
+        suffix: "iscsitemp"
+        path: "/home/pi"
+      register: iscsitemp
 
+    - name: "mount iscsi root source"
+      become: yes
+      mount:
+        path: "{{ iscsitemp.path }}"
+        src: "{{ iscsi_device }}"
+        fstype: "ext4"
+        opts: defaults
+        state: mounted
+      register: iscsimount
 
+    - name: "rsync copy root partition"
+      become: yes
+      register: rsync
+      command: "rsync -xaq --exclude {{ iscsitemp.path }} / {{ iscsitemp.path }}"
 
-### thanks: https://docs.ansible.com/ansible/latest/modules/tempfile_module.html
-###       & https://docs.ansible.com/ansible/latest/user_guide/playbooks_blocks.html
-#- name: "setup nfs root"
-#  become: yes
-#  block:
-#    - name: "create temp nfs mount"
-#      become: yes
-#      tempfile:
-#        state: directory
-#        suffix: "nfstemp"
-#        path: "/home/pi"
-#      register: nfstemp
-#
-#    - name: "mount nfs root source"
-#      become: yes
-#      mount:
-#        path: "{{ nfstemp.path }}"
-#        src: "{{ nfs_root_source | replace('{{ inventory_hostname }}',inventory_hostname) }}"
-#        fstype: nfs
-#        opts: defaults
-#        state: mounted
-#      register: nfsmount
-#
-#    - name: "rsync copy root partition"
-#      become: yes
-#      register: rsync
-#      command: "rsync -xaq --exclude {{ nfstemp.path }} / {{ nfstemp.path }}"
-#
-#    - name: "comment out sd card root mount"
-#      become: yes
-#      lineinfile:
-#        path: "{{ nfstemp.path}}/etc/fstab"
-#        regexp: '^((PARTUUID=[0-9a-zA-Z-]*  / .*)$)'
-#        line: '#\1'
-#        backrefs: yes
-#  always:
-#    - name: "unmount nfs root source"
-#      become: yes
-#      mount:
-#        path: "{{ nfstemp.path }}"
-#        state: absent
-#      when: nfsmount is defined and not nfsmount.failed
-#
-#    - name: "remove temp nfs mount"
-#      become: yes
-#      file:
-#        path: "{{ nfstemp.path }}"
-#        state: absent
-#      when: nfstemp.path is defined
-#  when: nfs_root_found is not defined
-#
-#- name: "remove rootfstype to cmdline.txt"
-#  become: yes
-#  register: type_cmd
-#  lineinfile:
-#    path: /boot/cmdline.txt
-#    regexp: '^(.*)(rootfstype=ext4 *)(.*$)'
-#    line: '\1\3'
-#    backrefs: yes   
-#
-#- name: "remove sd root partition to cmdline.txt"
-#  become: yes
-#  register: sd_cmd
-#  lineinfile:
-#    path: /boot/cmdline.txt
-#    regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z-]* *)(.*$)'
-#    line: '\1\3'
-#    backrefs: yes   
-#
-#- name: 'add nfs root to cmdline.txt'
-#  become: yes
-#  register: nfs_cmd
-#  lineinfile:
-#    path: /boot/cmdline.txt
-#    regexp: '^(((?! root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)'
-#    line: '\1 root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)'
-#    backrefs: yes
-#
-#- name: 'add dhcp to cmdline.txt'
-#  become: yes
-#  register: dhcp_cmd
-#  lineinfile:
-#    path: /boot/cmdline.txt
-#    regexp: '^(((?! ip=dhcp).)*$)'
-#    line: '\1 ip=dhcp'
-#    backrefs: yes
-#
-#- name: 'reboot after setting up nfs root'
+    - name: "comment out sd card root mount"
+      become: yes
+      lineinfile:
+        path: "{{ iscsitemp.path}}/etc/fstab"
+        regexp: '^((PARTUUID=[0-9a-zA-Z-]*  / .*)$)'
+        line: '#\1'
+        backrefs: yes
+
+    - name: "add iscsi root mount"
+      become: yes
+      lineinfile:
+        path: "{{ iscsitemp.path }}/etc/fstab"
+        regexp: '^UUID={{ iscsi_uuid.stdout }} */ *ext4 *defaults *1 *1$'
+        line: 'UUID={{ iscsi_uuid.stdout }}       /       ext4    defaults        1       1'
+#        regexp: '^UUID={{ iscsi_uuid.stdout }} */ *ext4 *defaults *1 *1$'
+#        line: 'UUID={{ iscsi_uuid.stdout }}       /       ext4    defaults        1       1'
+  always:
+    - name: "unmount iscsi root source in copy"
+      become: yes
+      lineinfile:
+        path: "{{ iscsitemp.path }}/etc/fstab"
+        regexp: "^{{ iscsi_device }} *{{ iscsitemp.path }} *ext4.*$"
+        state: absent
+      when: iscsimount is defined and not iscsimount.failed
+
+    - name: "unmount iscsi root source local"
+      become: yes
+      mount:
+        path: "{{ iscsitemp.path }}"
+        state: absent
+      when: iscsimount is defined and not iscsimount.failed
+
+    - name: "remove temp iscsi mountpoint"
+      become: yes
+      file:
+        path: "{{ iscsitemp.path }}"
+        state: absent
+      when: iscsitemp.path is defined
+  when: iscsi_root_found is not defined
+  tags: iscsiroot,netroot
+
+## thanks: https://docs.ansible.com/ansible/latest/modules/tempfile_module.html
+##       & https://docs.ansible.com/ansible/latest/user_guide/playbooks_blocks.html
+
+- name: 'copy cmdline.txt to cmdline.txt.iscsi'
+  become: yes
+  copy:
+    src: /boot/cmdline.txt
+    dest: /boot/cmdline.txt.iscsi
+    remote_src: yes
+    force: yes
+  tags: iscsiroot,netroot
+  when: iscsi_root_dontinstall is defined
+
+- name: "choose cmdline.txt filename"
+  set_fact:
+    cmdline_filename: "/boot/cmdline.txt{{ '.iscsi' if (iscsi_root_dontinstall is defined) else '' }}"
+  tags: iscsiroot,netroot
+
+- name: "remove rootfstype from cmdline.txt"
+  become: yes
+  register: type_cmd
+  lineinfile:
+    path: "{{ cmdline_filename }}"
+    regexp: '^(.*)(rootfstype=ext4 *)(.*$)'
+    line: '\1\3'
+    backrefs: yes   
+  tags: iscsiroot,netroot
+
+- name: "remove sd root partition from cmdline.txt"
+  become: yes
+  register: sd_cmd
+  lineinfile:
+    path: "{{ cmdline_filename }}"
+    regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z-]* *)(.*$)'
+    line: '\1\3'
+    backrefs: yes   
+  tags: iscsiroot,netroot
+
+- name: "create root cmdline.txt entry"
+  set_fact:
+    iscsi_cmdline: 'ISCSI_INITIATOR={{ iscsi_initiator.stdout }} ISCSI_TARGET_NAME={{ iscsi_root_iqn | replace("{{ inventory_hostname }}",inventory_hostname) }} ISCSI_TARGET_IP={{ iscsi_root_ip }} ISCSI_TARGET_PORT={{ iscsi_root_port | default("3260") }} ISCSI_TARGET_GROUP=1 rw rootfstype=ext4 root=UUID={{ iscsi_uuid.stdout }}'
+  tags: iscsiroot,netroot
+
+- debug:
+    msg: 
+      raw: "{{ iscsi_cmdline }}"
+      regexp: '^(((?! {{ iscsi_cmdline | replace (".","\.") }}).)*$)'
+  tags: iscsiroot,netroot
+
+- name: 'add iscsi root to cmdline.txt'
+  become: yes
+  register: iscsi_cmd
+  lineinfile:
+    path: "{{ cmdline_filename }}"
+    regexp: '^(((?! {{ iscsi_cmdline | replace (".","\.") }}).)*$)'
+    line: '\1 {{ iscsi_cmdline }}'
+    backrefs: yes
+  tags: iscsiroot,netroot
+
+- name: 'add iscsi root to cmdline.txt'
+  become: yes
+  register: iscsi_cmd
+  lineinfile:
+    path: "{{ cmdline_filename }}"
+    regexp: '^(((?! {{ iscsi_cmdline | replace (".","\.") }}).)*$)'
+    line: '\1 {{ iscsi_cmdline }}'
+    backrefs: yes
+  tags: iscsiroot,netroot
+
+#- name: 'reboot after setting up iscsi root'
 #  become: yes
 #  reboot:
-#  when: (nfs_root_found is not defined and not rsync.failed) or type_cmd.changed or sd_cmd.changed or nfs_cmd.changed or dhcp_cmd.changed
+#  when: (iscsi_root_found is not defined and not rsync.failed) or type_cmd.changed or sd_cmd.changed or iscsi_cmd.changed
+#  tags: iscsiroot,netroot
+
+######### see https://www.domoticz.com/forum/viewtopic.php?t=28797

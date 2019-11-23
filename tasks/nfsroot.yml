@@ -7,6 +7,7 @@
     name: "rsync"
     state: present
     install_recommends: no
+  tags: netroot,nfsroot
 
 - name: "enable rpcbind"
   become: yes
@@ -14,6 +15,7 @@
     name: rpcbind
     enabled: yes
     state: started
+  tags: netroot,nfsroot
 
 - name: "add nfs guest user"
   become: yes
@@ -23,6 +25,7 @@
     uid: "{{ nfs_guest_uid }}"
     group: "pi"
   when: (nfs_guest_username|default('')) != '' and (nfs_guest_uid|default('')) != ''
+  tags: netroot,nfsroot
 
 - name: "check for existing nfs root"
   set_fact:
@@ -30,13 +33,14 @@
   no_log: true
   with_items: "{{ ansible_mounts }}"
   when: "item.mount=='/' and 'nfs' in item.fstype"
+  tags: netroot,nfsroot
 
 ## thanks: https://docs.ansible.com/ansible/latest/modules/tempfile_module.html
 ##       & https://docs.ansible.com/ansible/latest/user_guide/playbooks_blocks.html
 - name: "setup nfs root"
   become: yes
   block:
-    - name: "create temp nfs mount"
+    - name: "create temp nfs mountpoint"
       become: yes
       tempfile:
         state: directory
@@ -74,15 +78,16 @@
         state: absent
       when: nfsmount is defined and not nfsmount.failed
 
-    - name: "remove temp nfs mount"
+    - name: "remove temp nfs mountpoint"
       become: yes
       file:
         path: "{{ nfstemp.path }}"
         state: absent
       when: nfstemp.path is defined
   when: nfs_root_found is not defined
+  tags: netroot,nfsroot
 
-- name: "remove rootfstype to cmdline.txt"
+- name: "remove rootfstype from cmdline.txt"
   become: yes
   register: type_cmd
   lineinfile:
@@ -90,8 +95,9 @@
     regexp: '^(.*)(rootfstype=ext4 *)(.*$)'
     line: '\1\3'
     backrefs: yes   
+  tags: netroot,nfsroot
 
-- name: "remove sd root partition to cmdline.txt"
+- name: "remove sd root partition from cmdline.txt"
   become: yes
   register: sd_cmd
   lineinfile:
@@ -99,6 +105,7 @@
     regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z-]* *)(.*$)'
     line: '\1\3'
     backrefs: yes   
+  tags: netroot,nfsroot
 
 - name: 'add nfs root to cmdline.txt'
   become: yes
@@ -106,10 +113,11 @@
   lineinfile:
     path: /boot/cmdline.txt
     regexp: '^(((?! root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)'
-    line: '\1 root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)'
+    line: '\1 root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs'
     backrefs: yes
+  tags: netroot,nfsroot
 
-- name: 'add dhcp to cmdline.txt'
+- name: 'add dhcp to cmdline.txt (required only for nfs)'
   become: yes
   register: dhcp_cmd
   lineinfile:
@@ -117,8 +125,10 @@
     regexp: '^(((?! ip=dhcp).)*$)'
     line: '\1 ip=dhcp'
     backrefs: yes
+  tags: netroot,nfsroot
 
 - name: 'reboot after setting up nfs root'
   become: yes
   reboot:
   when: (nfs_root_found is not defined and not rsync.failed) or type_cmd.changed or sd_cmd.changed or nfs_cmd.changed or dhcp_cmd.changed
+  tags: netroot,nfsroot
