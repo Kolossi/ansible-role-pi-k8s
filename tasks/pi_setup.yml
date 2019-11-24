@@ -1,6 +1,6 @@
 ---
 
-- name: 'enable wait for network on boot'
+- name: 'setup dhcp wait for network on boot'
   register: bootwait_result
   become: yes
   shell:
@@ -8,9 +8,27 @@
         cat > /etc/systemd/system/dhcpcd.service.d/wait.conf << EOF
         [Service]
         ExecStart=
-        ExecStart=/usr/lib/dhcpcd5/dhcpcd -q -w -4
+        ExecStart=/usr/lib/dhcpcd5/dhcpcd -q -w -4 -z eth0
         EOF
     creates: /etc/systemd/system/dhcpcd.service.d/wait.conf
+
+- name: 'enable wait for network on boot'
+  register: bootwait_w_result
+  become: yes
+  lineinfile:
+    path: /etc/systemd/system/dhcpcd.service.d/wait.conf
+    regexp: '^(ExecStart=/usr/lib/dhcpcd5/dhcpcd((?! -w).)*$)'
+    line: '\1 -w'
+    backrefs: yes
+
+- name: 'enable dhcp for eth0 only'
+  register: bootwait_w_result
+  become: yes
+  lineinfile:
+    path: /etc/systemd/system/dhcpcd.service.d/wait.conf
+    regexp: '^(ExecStart=/usr/lib/dhcpcd5/dhcpcd((?! -z eth0).)*$)'
+    line: '\1 -z eth0'
+    backrefs: yes
 
 - name: 'update hostname'
   when: inventory_hostname != ansible_hostname

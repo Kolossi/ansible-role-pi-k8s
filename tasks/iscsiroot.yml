@@ -1,15 +1,17 @@
 ---
 
-- name: "install open-iscsi"
+######### see https://www.domoticz.com/forum/viewtopic.php?t=28797
+
+- name: "install open-iscsi & initramfs-tools"
   become: yes
   apt:
     force_apt_get: yes # there's no need to use aptitude
-    name: "open-iscsi"
+    name: ['open-iscsi','initramfs-tools']
     state: present
     install_recommends: no
   tags: iscsiroot,netroot
 
-- name: "disable ib_iser"
+- name: "disable ib_iser" # <- was causing error during boot on pi4b
   become: yes
   register: iscsi_iser
   lineinfile:
@@ -32,11 +34,7 @@
     iscsi_root_found: yes
   no_log: true
   with_items: "{{ ansible_mounts }}"
-  when: "item.mount=='/' and 'nfs' in item.fstype"
-  tags: iscsiroot,netroot
-
-- debug:
-    msg: "{{ ansible_mounts }}"
+  when: "item.mount=='/' and 'ext4' in item.fstype and '/dev/sd' in item.device"
   tags: iscsiroot,netroot
 
 - name: "mount iscsi lun"
@@ -49,9 +47,8 @@
     portal: "{{ iscsi_root_ip }}"
     port: "{{ iscsi_root_port | default('3260') }}"
     target: '{{ iscsi_root_iqn | replace("{{ inventory_hostname }}",inventory_hostname) }}'
-    node_auth: "CHAP"
-    node_user: '{{ iscsi_root_username | replace("{{ inventory_hostname }}",inventory_hostname) | regex_replace("[^a-zA-Z0-9]","") }}'
-    node_pass: "{{ iscsi_root_password }}"
+    node_user: '{{ iscsi_root_username | default("") | replace("{{ inventory_hostname }}",inventory_hostname) | regex_replace("[^a-zA-Z0-9]","") }}'
+    node_pass: '{{ iscsi_root_password | default("") }}'
   tags: iscsiroot,netroot
 
 - name: "find iscsi device"
@@ -106,7 +103,7 @@
     - name: "rsync copy root partition"
       become: yes
       register: rsync
-      command: "rsync -xaq --exclude {{ iscsitemp.path }} / {{ iscsitemp.path }}"
+      command: "rsync -xaq --delete --exclude {{ iscsitemp.path }} / {{ iscsitemp.path }}"
 
     - name: "comment out sd card root mount"
       become: yes
@@ -122,8 +119,7 @@
         path: "{{ iscsitemp.path }}/etc/fstab"
         regexp: '^UUID={{ iscsi_uuid.stdout }} */ *ext4 *defaults *1 *1$'
         line: 'UUID={{ iscsi_uuid.stdout }}       /       ext4    defaults        1       1'
-#        regexp: '^UUID={{ iscsi_uuid.stdout }} */ *ext4 *defaults *1 *1$'
-#        line: 'UUID={{ iscsi_uuid.stdout }}       /       ext4    defaults        1       1'
+
   always:
     - name: "unmount iscsi root source in copy"
       become: yes
@@ -152,6 +148,15 @@
 ## thanks: https://docs.ansible.com/ansible/latest/modules/tempfile_module.html
 ##       & https://docs.ansible.com/ansible/latest/user_guide/playbooks_blocks.html
 
+- name: 'copy cmdline.txt to cmdline.txt.before_iscsi'
+  become: yes
+  copy:
+    src: /boot/cmdline.txt
+    dest: /boot/cmdline.txt.before_iscsi
+    remote_src: yes
+    force: no
+  tags: iscsiroot,netroot
+
 - name: 'copy cmdline.txt to cmdline.txt.iscsi'
   become: yes
   copy:
@@ -160,68 +165,98 @@
     remote_src: yes
     force: yes
   tags: iscsiroot,netroot
-  when: iscsi_root_dontinstall is defined
 
-- name: "choose cmdline.txt filename"
-  set_fact:
-    cmdline_filename: "/boot/cmdline.txt{{ '.iscsi' if (iscsi_root_dontinstall is defined) else '' }}"
+- name: 'copy config.txt to config.txt.before_iscsi'
+  become: yes
+  copy:
+    src: /boot/config.txt
+    dest: /boot/config.txt.before_iscsi
+    remote_src: yes
+    force: no
+  tags: iscsiroot,netroot
+
+- name: 'copy config.txt to config.txt.iscsi'
+  become: yes
+  copy:
+    src: /boot/config.txt
+    dest: /boot/config.txt.iscsi
+    remote_src: yes
+    force: yes
+  tags: iscsiroot,netroot
+
+- name: 'make initramfs'
+  become: yes
+  register: initramfs
+  shell:
+    cmd: 'update-initramfs -k {{ ansible_kernel }} -c'
+    creates: '/boot/initrd.img-{{ ansible_kernel }}'
+  tags: iscsiroot,netroot
+
+- name: 'add initramfs to config.txt.iscsi'
+  become: yes
+  lineinfile:
+    path: /boot/config.txt.iscsi
+    line: 'initramfs initrd.img-{{ ansible_kernel }} followkernel'
   tags: iscsiroot,netroot
 
 - name: "remove rootfstype from cmdline.txt"
   become: yes
   register: type_cmd
   lineinfile:
-    path: "{{ cmdline_filename }}"
+    path: "/boot/cmdline.txt.iscsi"
     regexp: '^(.*)(rootfstype=ext4 *)(.*$)'
     line: '\1\3'
     backrefs: yes   
   tags: iscsiroot,netroot
 
-- name: "remove sd root partition from cmdline.txt"
+- name: "remove sd root partition from cmdline.txt.iscsi"
   become: yes
   register: sd_cmd
   lineinfile:
-    path: "{{ cmdline_filename }}"
+    path: "/boot/cmdline.txt.iscsi"
     regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z-]* *)(.*$)'
     line: '\1\3'
     backrefs: yes   
   tags: iscsiroot,netroot
 
-- name: "create root cmdline.txt entry"
+- name: "create root cmdline.txt.iscsi entry"
   set_fact:
     iscsi_cmdline: 'ISCSI_INITIATOR={{ iscsi_initiator.stdout }} ISCSI_TARGET_NAME={{ iscsi_root_iqn | replace("{{ inventory_hostname }}",inventory_hostname) }} ISCSI_TARGET_IP={{ iscsi_root_ip }} ISCSI_TARGET_PORT={{ iscsi_root_port | default("3260") }} ISCSI_TARGET_GROUP=1 rw rootfstype=ext4 root=UUID={{ iscsi_uuid.stdout }}'
   tags: iscsiroot,netroot
 
-- debug:
-    msg: 
-      raw: "{{ iscsi_cmdline }}"
-      regexp: '^(((?! {{ iscsi_cmdline | replace (".","\.") }}).)*$)'
-  tags: iscsiroot,netroot
-
-- name: 'add iscsi root to cmdline.txt'
+- name: 'add iscsi root to cmdline.txt.iscsi'
   become: yes
   register: iscsi_cmd
   lineinfile:
-    path: "{{ cmdline_filename }}"
-    regexp: '^(((?! {{ iscsi_cmdline | replace (".","\.") }}).)*$)'
+    path: "/boot/cmdline.txt.iscsi"
+    regexp: '^(((?! {{ iscsi_cmdline }}).)*$)'
     line: '\1 {{ iscsi_cmdline }}'
     backrefs: yes
   tags: iscsiroot,netroot
 
-- name: 'add iscsi root to cmdline.txt'
+- name: 'copy cmdline.txt.iscsi to cmdline.txt'
   become: yes
-  register: iscsi_cmd
-  lineinfile:
-    path: "{{ cmdline_filename }}"
-    regexp: '^(((?! {{ iscsi_cmdline | replace (".","\.") }}).)*$)'
-    line: '\1 {{ iscsi_cmdline }}'
-    backrefs: yes
+  copy:
+    src: /boot/cmdline.txt.iscsi
+    dest: /boot/cmdline.txt
+    remote_src: yes
+    force: yes
+  tags: iscsiroot,netroot
+  when: iscsi_root_dontinstall is not defined
+
+- name: 'copy config.txt.iscsi to config.txt'
+  become: yes
+  copy:
+    src: /boot/config.txt.iscsi
+    dest: /boot/config.txt
+    remote_src: yes
+    force: yes
+  tags: iscsiroot,netroot
+  when: iscsi_root_dontinstall is not defined
+
+- name: 'reboot after setting up iscsi root'
+  become: yes
+  reboot:
+  when: iscsi_root_dontinstall is not defined and ((iscsi_root_found is not defined and not rsync.failed) or type_cmd.changed or sd_cmd.changed or iscsi_cmd.changed)
   tags: iscsiroot,netroot
 
-#- name: 'reboot after setting up iscsi root'
-#  become: yes
-#  reboot:
-#  when: (iscsi_root_found is not defined and not rsync.failed) or type_cmd.changed or sd_cmd.changed or iscsi_cmd.changed
-#  tags: iscsiroot,netroot
-
-######### see https://www.domoticz.com/forum/viewtopic.php?t=28797

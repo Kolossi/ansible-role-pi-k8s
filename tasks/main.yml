@@ -32,7 +32,7 @@
 - import_tasks: dashboard.yml
   tags: dashboard
 
-- import_tasks: dashboard.yml
+- import_tasks: delete_token.yml
   tags: delete_token, never # <- never means this will only run if delete_token explictly given on the commandline
 
 
