@@ -49,11 +49,13 @@
     target: '{{ iscsi_root_iqn | replace("{{ inventory_hostname }}",inventory_hostname) }}'
     node_user: '{{ iscsi_root_username | default("") | replace("{{ inventory_hostname }}",inventory_hostname) | regex_replace("[^a-zA-Z0-9]","") }}'
     node_pass: '{{ iscsi_root_password | default("") }}'
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: "find iscsi device"
   set_fact:
     iscsi_device: "{{ iscsimount.devicenodes[0] }}"
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: "make ext4 filesystem on iscsi device"
@@ -63,6 +65,7 @@
     fstype: ext4
     dev: "{{ iscsi_device }}"
     resizefs: yes
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: "Get iscsi lun uuid"
@@ -70,6 +73,7 @@
   command: "lsblk --noheadings --output uuid {{ iscsi_device }}"
   register: iscsi_uuid
   changed_when: false
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: "Get initiator name"
@@ -77,11 +81,11 @@
   register: iscsi_initiator
   shell: "cat /etc/iscsi/initiatorname.iscsi | grep -v '^##' | tail -1 | cut -d'=' -f2"
   changed_when: false
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
-- name: "setup iscsi root"
-  become: yes
-  block:
+## thanks: https://docs.ansible.com/ansible/latest/user_guide/playbooks_blocks.html
+- block:
     - name: "create temp iscsi mountpoint"
       become: yes
       tempfile:
@@ -145,9 +149,6 @@
   when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
-## thanks: https://docs.ansible.com/ansible/latest/modules/tempfile_module.html
-##       & https://docs.ansible.com/ansible/latest/user_guide/playbooks_blocks.html
-
 - name: 'copy cmdline.txt to cmdline.txt.before_iscsi'
   become: yes
   copy:
@@ -155,6 +156,7 @@
     dest: /boot/cmdline.txt.before_iscsi
     remote_src: yes
     force: no
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: 'copy cmdline.txt to cmdline.txt.iscsi'
@@ -164,6 +166,7 @@
     dest: /boot/cmdline.txt.iscsi
     remote_src: yes
     force: yes
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: 'copy config.txt to config.txt.before_iscsi'
@@ -173,6 +176,7 @@
     dest: /boot/config.txt.before_iscsi
     remote_src: yes
     force: no
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: 'copy config.txt to config.txt.iscsi'
@@ -182,6 +186,7 @@
     dest: /boot/config.txt.iscsi
     remote_src: yes
     force: yes
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: 'make initramfs'
@@ -190,6 +195,7 @@
   shell:
     cmd: 'update-initramfs -k {{ ansible_kernel }} -c'
     creates: '/boot/initrd.img-{{ ansible_kernel }}'
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: 'add initramfs to config.txt.iscsi'
@@ -197,16 +203,7 @@
   lineinfile:
     path: /boot/config.txt.iscsi
     line: 'initramfs initrd.img-{{ ansible_kernel }} followkernel'
-  tags: iscsiroot,netroot
-
-- name: "remove rootfstype from cmdline.txt"
-  become: yes
-  register: type_cmd
-  lineinfile:
-    path: "/boot/cmdline.txt.iscsi"
-    regexp: '^(.*)(rootfstype=ext4 *)(.*$)'
-    line: '\1\3'
-    backrefs: yes   
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: "remove sd root partition from cmdline.txt.iscsi"
@@ -217,11 +214,13 @@
     regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z-]* *)(.*$)'
     line: '\1\3'
     backrefs: yes   
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: "create root cmdline.txt.iscsi entry"
   set_fact:
-    iscsi_cmdline: 'ISCSI_INITIATOR={{ iscsi_initiator.stdout }} ISCSI_TARGET_NAME={{ iscsi_root_iqn | replace("{{ inventory_hostname }}",inventory_hostname) }} ISCSI_TARGET_IP={{ iscsi_root_ip }} ISCSI_TARGET_PORT={{ iscsi_root_port | default("3260") }} ISCSI_TARGET_GROUP=1 rw rootfstype=ext4 root=UUID={{ iscsi_uuid.stdout }}'
+    iscsi_cmdline: 'ISCSI_INITIATOR={{ iscsi_initiator.stdout }} ISCSI_TARGET_NAME={{ iscsi_root_iqn | replace("{{ inventory_hostname }}",inventory_hostname) }} ISCSI_TARGET_IP={{ iscsi_root_ip }} ISCSI_TARGET_PORT={{ iscsi_root_port | default("3260") }} ISCSI_TARGET_GROUP=1 rw root=UUID={{ iscsi_uuid.stdout }}'
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: 'add iscsi root to cmdline.txt.iscsi'
@@ -232,10 +231,23 @@
     regexp: '^(((?! {{ iscsi_cmdline }}).)*$)'
     line: '\1 {{ iscsi_cmdline }}'
     backrefs: yes
+  when: iscsi_root_found is not defined
+  tags: iscsiroot,netroot
+
+- name: 'add fstype to cmdline.txt.iscsi'
+  become: yes
+  register: type_cmd
+  lineinfile:
+    path: "/boot/cmdline.txt.iscsi"
+    regexp: '^(((?! rootfstype=ext4).)*$)'
+    line: '\1 rootfstype=ext4'
+    backrefs: yes
+  when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
 - name: 'copy cmdline.txt.iscsi to cmdline.txt'
   become: yes
+  register: cmdlinecopy
   copy:
     src: /boot/cmdline.txt.iscsi
     dest: /boot/cmdline.txt
@@ -246,6 +258,7 @@
 
 - name: 'copy config.txt.iscsi to config.txt'
   become: yes
+  register: configcopy
   copy:
     src: /boot/config.txt.iscsi
     dest: /boot/config.txt
@@ -257,6 +270,6 @@
 - name: 'reboot after setting up iscsi root'
   become: yes
   reboot:
-  when: iscsi_root_dontinstall is not defined and ((iscsi_root_found is not defined and not rsync.failed) or type_cmd.changed or sd_cmd.changed or iscsi_cmd.changed)
+  when: iscsi_root_dontinstall is not defined and ((iscsi_root_found is not defined and not rsync.failed) or cmdlinecopy.changed or configcopy.changed)
   tags: iscsiroot,netroot
 
