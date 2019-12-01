@@ -4,29 +4,76 @@
   run_once: yes
   set_fact:
     kernel_commits: "{{ lookup('url', 'https://api.github.com/repos/Hexxeh/rpi-firmware/commits') }}"
+  tags: get_version
 
 # thanks: https://www.tailored.cloud/devops/advanced-list-operations-ansible/
 #         https://stackoverflow.com/a/40659528/2738122
 - name: "find matching shas"
   run_once: yes
   set_fact:
-    kernel_shas: "{% for commit_data in kernel_commits %}\
-                    {% if commit_data.sha.startswith(kernel_version) or commit_data.commit.message.startswith('kernel: Bump to '+kernel_version)%}\
-                      {{ commit_data.sha }}\
-                    {% endif %}\
-                  {% endfor %}"
-    failed_when: kernel_shas | count > 1
+    matching_commit: "{% for commit_data in kernel_commits %}\
+                         {% if commit_data.sha.startswith(kernel_version) or commit_data.commit.message.startswith('kernel: Bump to '+kernel_version)%}\
+                           {{ commit_data }}\
+                         {% endif %}\
+                       {% endfor %}"
+    failed_when: matching_commit | count > 1
+  tags: get_version
 
-- name: "get new kernel version"
+- name: "set requested kernel details"
+  run_once: yes
   set_fact:
-    new_kernel_version: ????
+    requested_kernel_sha: '{{ matching_commit.sha }}'
+    new_kernel_version: "{{ matching_commit.commit.message.splitlines()[0] | regex_replace('^kernel: Bump to ([0-9]+\\.[0-9]+\\.[0-9]+).*','\\1')}}%%%{{ ansible_kernel | regex_replace('^[0.9]+\\.[0-9]+\\.[0-9]+(\\-?v?[0-9]?\\+?)$','\\1') }}"
+  tags: get_version
+
+- name: "set new config"
+  run_once: yes
+  set_fact:
+    old_config: " initramfs initrd.img-{{ ansible_kernel }} followkernel"
+    regex_exp: "{{'initramfs[ \\t]+initrd.img-'+ansible_kernel+'[ \\t]+followkernel'}}" 
+    regex_repl: "{{'initramfs initrd.img-'+new_kernel_version+'followkernel'}}" 
+  tags: get_version
+
+- name: "set new config"
+  run_once: yes
+  set_fact:
+      new_config: "{{ old_config | regex_replace(regex_exp,regex_repl) }}"
+  tags: get_version
+
+- debug:
+    msg:
+      - "%ansible_kernel%: {{ansible_kernel}}"
+      - "%requested_kernel_sha%: {{ requested_kernel_sha }}"
+      - "%new_kernel_version%: {{ new_kernel_version }}"
+      - "%new_config%: {{ new_config }}"
+      - "%regex_exp%: {{ regex_exp }}"
+      - "%regex_repl%: {{ regex_repl }}"
+  tags: get_version
+
+- name: "find /boot/.firmware_revision before update"
+  register: fwrev
+  stat:
+    path: "/boot/.firmware_revision"
+
+- name: "get firmware hash before update"
+  register: current_kernel_sha
+  slurp:
+    src: "/boot/.firmware_revision"
+  when: fwrev.stat.exists
 
 - name: "do rpi-update"
   become: yes
   register: rpi_update
   shell:
-    cmd: "rpi-update SKIP_WARNING=1 RPI_REBOOT=0 {{ kernel_shas[0] }}"
-  changed_when: ??? rpi-update returns 0 if ok, but what does it create for sure?
+    cmd: "rpi-update SKIP_WARNING=1 RPI_REBOOT=0 {{ requested_kernel_sha }}"
+  changed_when: rpi_update.rc == 0 and current_kernel_sha is defined and (current_kernel_sha['content'] | base64decode) != requested_kernel_sha
+
+- name: "check updated kernel sha"
+  register: new_kernel_sha
+  slurp:
+    src: "/boot/.firmware_revision"
+  when: rpi_update.changes
+  failed_when: (new_kernel_sha['content'] | b64decode) != requested_kernel_sha
 
 - name: 'make initramfs'
   become: yes
@@ -36,24 +83,26 @@
     creates: '/boot/initrd.img-{{ new_kernel_version }}'
   when: iscsi_root_found is not defined
 
-- name: 'add initramfs to config.txt'
+- name: 'add or update initramfs in config.txt'
   become: yes
+  register: config_kernel
   lineinfile:
     path: /boot/config.txt
-    regex: '(?<!#)\s*initramfs/s+initrd.img-{{ ansible_kernel }}/s+followkernel'  %%% <--- test this
+    regex: "(?<!#)\\s*initramfs\\s+initrd.img-{{ ansible_kernel }}\\s+followkernel"
     line: 'initramfs initrd.img-{{ new_kernel_version }} followkernel'
     state: present
     create: no
 
-- name: 'add initramfs to config.txt.iscsi' # created by this role's iscsiroot tasks
-  become: yes
-  lineinfile:
-    path: /boot/config.txt.iscsi
-    regex: '(?<!#)\s*initramfs/s+initrd.img-{{ ansible_kernel }}/s+followkernel'  %%% <--- test this
-    line: 'initramfs initrd.img-{{ new_kernel_version }} followkernel'
-    state: present
-    create: no
-  fail_when: no
+# created by this role's iscsiroot tasks
+#- name: 'add or update initramfs in config.txt.iscsi'
+#  become: yes
+#  lineinfile:
+#    path: /boot/config.txt.iscsi
+#    regex: "(?<!#)\\s*initramfs\\s+initrd.img-{{ ansible_kernel }}\\s+followkernel"
+#    line: 'initramfs initrd.img-{{ new_kernel_version }} followkernel'
+#    state: present
+#    create: no
+#  fail_when: no
 
 - name: "record kernel updated"
   set_fact:
