@@ -10,7 +10,8 @@
   tags: cni,weave
 
 ##############################
-###
+### 
+### needs kernel version >= 4.19.81-v7l+ ...
 ### see https://github.com/weaveworks/weave/issues/3717#issuecomment-552221620
 ###
 ##############################

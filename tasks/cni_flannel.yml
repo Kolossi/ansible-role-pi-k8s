@@ -3,7 +3,6 @@
 - name: 'check for cni'
   when: inventory_hostname in groups['k8smasters']
   register: cni_check_result
-# for jjinja ternary, thanks: https://stackoverflow.com/questions/42660653/how-can-i-use-a-condition-to-set-a-variable-value-in-ansible
   shell: "kubectl get pods -n kube-system | grep 'flannel'"
   changed_when: false
   failed_when: cni_check_result.rc != 0 and cni_check_result.rc != 1

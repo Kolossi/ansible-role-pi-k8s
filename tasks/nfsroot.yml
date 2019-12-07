@@ -24,7 +24,7 @@
     passwd: "!"
     uid: "{{ nfs_guest_uid }}"
     group: "pi"
-  when: (nfs_guest_username|default('')) != '' and (nfs_guest_uid|default('')) != ''
+  when: (nfs_guest_username | default('')) != '' and (nfs_guest_uid | default('')) != ''
   tags: netroot,nfsroot
 
 - name: "check for existing nfs root"

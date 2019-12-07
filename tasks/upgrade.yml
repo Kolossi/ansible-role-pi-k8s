@@ -17,13 +17,21 @@
     force_apt_get: yes # there's no need to use aptitude
     autoremove: yes
 
-## WIP - not ready for use yet
-#- import_tasks: 'kernelversion.yml'
-#  when: kernel_version is defined
-#  tags: kernelversion
+- import_tasks: 'kernel_version.yml'
+  when: kernel_version is defined
+  tags: kernelversion
+
+- debug:
+    msg:
+      - "%upgrade_result.changed%: {{ upgrade_result.changed }}"
+      - "%autoremove_result.changed%: {{ autoremove_result.changed }}"
+      - "%kernel_version_changed | default(False)%: {{ kernel_version_changed | default(False) }}"
+      - "%kernel_version_changed%: {{ kernel_version_changed }}"
+  tags: kernelversion
 
 - name: 'reboot after updates'
-  when: upgrade_result.changed or autoremove_result.changed or kernel_version_changed|default(false)
+  when: upgrade_result.changed or autoremove_result.changed or (kernel_version_changed | default(False))
   become: yes
   reboot:
+  tags: kernelversion
 

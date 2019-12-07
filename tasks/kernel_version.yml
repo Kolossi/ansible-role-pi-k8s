@@ -20,35 +20,32 @@
   tags: get_version
 
 - name: "set requested kernel details"
-  run_once: yes
   set_fact:
     requested_kernel_sha: '{{ matching_commit.sha }}'
-    new_kernel_version: "{{ matching_commit.commit.message.splitlines()[0] | regex_replace('^kernel: Bump to ([0-9]+\\.[0-9]+\\.[0-9]+).*','\\1')}}%%%{{ ansible_kernel | regex_replace('^[0.9]+\\.[0-9]+\\.[0-9]+(\\-?v?[0-9]?\\+?)$','\\1') }}"
+    new_kernel_version: "{{ matching_commit.commit.message.splitlines()[0] | regex_replace('^kernel: Bump to ([0-9]+\\.[0-9]+\\.[0-9]+).*','\\1')}}{{ ansible_kernel | regex_replace('^[0-9]+\\.[0-9]+\\.[0-9]+(\\-?v?[0-9]?l+\\+?)$','\\1') }}"
   tags: get_version
 
-- name: "set new config"
-  run_once: yes
+- name: "set configs"
   set_fact:
     old_config: " initramfs initrd.img-{{ ansible_kernel }} followkernel"
     regex_exp: "{{'initramfs[ \\t]+initrd.img-'+ansible_kernel+'[ \\t]+followkernel'}}" 
-    regex_repl: "{{'initramfs initrd.img-'+new_kernel_version+'followkernel'}}" 
+    regex_repl: "{{'initramfs initrd.img-'+new_kernel_version+' followkernel'}}" 
   tags: get_version
 
 - name: "set new config"
-  run_once: yes
   set_fact:
       new_config: "{{ old_config | regex_replace(regex_exp,regex_repl) }}"
   tags: get_version
 
-- debug:
-    msg:
-      - "%ansible_kernel%: {{ansible_kernel}}"
-      - "%requested_kernel_sha%: {{ requested_kernel_sha }}"
-      - "%new_kernel_version%: {{ new_kernel_version }}"
-      - "%new_config%: {{ new_config }}"
-      - "%regex_exp%: {{ regex_exp }}"
-      - "%regex_repl%: {{ regex_repl }}"
-  tags: get_version
+#- debug:
+#    msg:
+#      - "%ansible_kernel%: {{ansible_kernel}}"
+#      - "%requested_kernel_sha%: {{ requested_kernel_sha }}"
+#      - "%new_kernel_version%: {{ new_kernel_version }}"
+#      - "%new_config%: {{ new_config }}"
+#      - "%regex_exp%: {{ regex_exp }}"
+#      - "%regex_repl%: {{ regex_repl }}"
+#  tags: get_version
 
 - name: "find /boot/.firmware_revision before update"
   register: fwrev
@@ -61,19 +58,44 @@
     src: "/boot/.firmware_revision"
   when: fwrev.stat.exists
 
+- name: "set kernel sha"
+  set_fact:
+      current_kernel_sha: "{{ current_kernel_sha['content'] | b64decode | replace('\n', '') }}"
+  tags: get_version
+  when: fwrev.stat.exists and current_kernel_sha is defined
+
+#- debug:
+#    msg:
+#      - "%current_kernel_sha defined%: {{ current_kernel_sha is defined}}"
+#      - "%current_kernel_sha%: {{ current_kernel_sha | default('') }}"
+#      - "%requested_kernel_sha%: {{ requested_kernel_sha }}"
+#  tags: get_version
+
 - name: "do rpi-update"
   become: yes
   register: rpi_update
   shell:
-    cmd: "rpi-update SKIP_WARNING=1 RPI_REBOOT=0 {{ requested_kernel_sha }}"
-  changed_when: rpi_update.rc == 0 and current_kernel_sha is defined and (current_kernel_sha['content'] | base64decode) != requested_kernel_sha
+    cmd: "SKIP_WARNING=1 RPI_REBOOT=0 rpi-update {{ requested_kernel_sha }}"
+  changed_when: rpi_update.rc == 0 and (current_kernel_sha is not defined or current_kernel_sha != requested_kernel_sha)
 
-- name: "check updated kernel sha"
+- name: "get firmware hash after update"
   register: new_kernel_sha
   slurp:
     src: "/boot/.firmware_revision"
-  when: rpi_update.changes
-  failed_when: (new_kernel_sha['content'] | b64decode) != requested_kernel_sha
+
+- name: "set new kernel sha"
+  set_fact:
+      new_kernel_sha: "{{ new_kernel_sha['content'] | b64decode | replace('\n', '') }}"
+  tags: get_version
+  when: new_kernel_sha is defined
+
+#- debug:
+#    msg: "%new_kernel_sha%: {{ new_kernel_sha }}"
+#  tags: get_version
+
+- name: "fail if firmware update has not succeeded"
+  fail:
+  when: new_kernel_sha != requested_kernel_sha
 
 - name: 'make initramfs'
   become: yes
@@ -81,30 +103,34 @@
   shell:
     cmd: 'update-initramfs -k {{ new_kernel_version }} -c'
     creates: '/boot/initrd.img-{{ new_kernel_version }}'
-  when: iscsi_root_found is not defined
 
 - name: 'add or update initramfs in config.txt'
   become: yes
   register: config_kernel
   lineinfile:
     path: /boot/config.txt
-    regex: "(?<!#)\\s*initramfs\\s+initrd.img-{{ ansible_kernel }}\\s+followkernel"
+    regex: "^\\s*initramfs\\s+initrd.img-[^\\s]+\\s+followkernel"
     line: 'initramfs initrd.img-{{ new_kernel_version }} followkernel'
     state: present
     create: no
 
 # created by this role's iscsiroot tasks
-#- name: 'add or update initramfs in config.txt.iscsi'
-#  become: yes
-#  lineinfile:
-#    path: /boot/config.txt.iscsi
-#    regex: "(?<!#)\\s*initramfs\\s+initrd.img-{{ ansible_kernel }}\\s+followkernel"
-#    line: 'initramfs initrd.img-{{ new_kernel_version }} followkernel'
-#    state: present
-#    create: no
-#  fail_when: no
+- name: 'add or update initramfs in config.txt.iscsi'
+  become: yes
+  lineinfile:
+    path: /boot/config.txt.iscsi
+    regex: "^\\s*initramfs\\s+initrd.img-[^\\s]+\\s+followkernel"
+    line: 'initramfs initrd.img-{{ new_kernel_version }} followkernel'
+    state: present
+    create: no
+  failed_when: no
 
+#- debug:
+#    msg:
+#      - "%rpi_update.changed%: {{ rpi_update.changed }}"
+#      - "%initramfs.changed%: {{ initramfs.changed }}"
+#      - "%config_kernel.changed%: {{ config_kernel.changed }}"
+ 
 - name: "record kernel updated"
   set_fact:
-    kernel_version_changed: yes
-    when: rpi_update.changed or initramfs.changed or config_kernel.changed
+    kernel_version_changed: "{{ True if (rpi_update.changed or initramfs.changed or config_kernel.changed) else False }}"

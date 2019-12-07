@@ -1,7 +1,15 @@
 ---
 
+- name: 'install kubernetes dashboard'
+  register: dashboard_install
+  when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
+  shell: "kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/{{ dashboard_version }}/aio/deploy/recommended.yaml"
+  failed_when: dashboard_install.rc != 0 and dashboard_install.rc != 1
+  tags: dashboard
+
 # multiline command - thanks: https://stackoverflow.com/a/40230416/2738122
 - name: 'create dashboard ServiceAccount'
+  register: dashboard_service_account
   when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
   shell:
     cmd: |
@@ -12,8 +20,11 @@
         name: admin-user
         namespace: kubernetes-dashboard
       EOF
+  failed_when: dashboard_service_account.rc != 0 and dashboard_service_account.rc != 1
+  tags: dashboard
 
 - name: 'create dashboard ClusterRoleBinding'
+  register: dashboard_role_binding
   when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
   shell:
     cmd: |
@@ -31,16 +42,19 @@
         name: admin-user
         namespace: kubernetes-dashboard
       EOF
+  failed_when: dashboard_role_binding.rc != 0 and dashboard_role_binding.rc != 1
+  tags: dashboard
   
 - name: 'get dashboard token'
   when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
   register: dashboard_token_result
   shell: "kubectl -n kubernetes-dashboard describe secret $(kubectl -n kubernetes-dashboard get secret | grep admin-user | awk '{print $1}') | grep '^token:' | awk '{print $2}'"
   failed_when: dashboard_token_result.rc != 0 or dashboard_token_result.stdout == ''
+  tags: dashboard
 
 - name: 'show dashboard token'
   when: inventory_hostname == groups['k8smasters'][0] and install_dashboard
   debug:
-     msg: "{{ dashboard_token_result.stdout }}"
+     msg: "dashboard token : {{ dashboard_token_result.stdout }} - see https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/"
+  tags: dashboard
 
-# https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/

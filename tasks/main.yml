@@ -3,11 +3,11 @@
 - import_tasks: pi_setup.yml
   tags: pi_setup
 
-- include_tasks: nfsroot.yml
+- include_tasks: "nfsroot.yml"
   tags: netroot, nfsroot
   when: nfs_root_source is defined
 
-- include_tasks: iscsiroot.yml
+- include_tasks: "iscsiroot.yml"
   tags: netroot, iscsiroot
   when: iscsi_root_iqn is defined
 
@@ -29,8 +29,9 @@
 - import_tasks: kubernetes_worker.yml
   tags: kubernetes,kubernetes_worker
 
-- import_tasks: dashboard.yml
+- include_tasks: "dashboard.yml"
   tags: dashboard
+  when: install_dashboard and dashboard_version is defined
 
 - import_tasks: delete_token.yml
   tags: delete_token, never # <- never means this will only run if delete_token explictly given on the commandline
