@@ -21,14 +21,14 @@
 - name: 'add docker gpg key'
   become: yes
   apt_key:
-    url: https://download.docker.com/linux/debian/gpg
+    url: "https://download.docker.com/linux/{{ 'ubuntu' if (is_ubuntu) else 'debian' }}/gpg"
     state: present
     
 - name: "add docker repo"
   become: yes
   register: add_docker_repo_result
   apt_repository:
-    repo: deb [arch=armhf] https://download.docker.com/linux/debian buster stable
+    repo: "deb [arch={{ 'arm64' if (is_ubuntu) else 'armhf' }}] https://download.docker.com/linux/{{ 'ubuntu' if (is_ubuntu) else 'debian' }} {{ ansible_distribution_release }} stable"
     state: present
     update_cache: yes
 
@@ -112,7 +112,7 @@
   when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed
 # or create_docker_service_directory.changed
   shell:
-    cmd: "docker run armhf/hello-world"
+    cmd: "docker run {{ 'arm64' if (is_ubuntu) else 'armhf' }}/hello-world"
 
 - name: 'reboot after docker install'
   when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed

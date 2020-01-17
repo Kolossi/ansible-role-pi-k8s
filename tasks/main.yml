@@ -1,5 +1,8 @@
 ---
 
+- import_tasks: process_facts.yml
+  tags: always
+
 - import_tasks: pi_setup.yml
   tags: pi_setup
 

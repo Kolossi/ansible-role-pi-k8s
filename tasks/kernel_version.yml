@@ -108,7 +108,7 @@
   become: yes
   register: config_kernel
   lineinfile:
-    path: /boot/config.txt
+    path: "{{ config_txt_path }}"
     regex: "^\\s*initramfs\\s+initrd.img-[^\\s]+\\s+followkernel"
     line: 'initramfs initrd.img-{{ new_kernel_version }} followkernel'
     state: present
@@ -118,7 +118,7 @@
 - name: 'add or update initramfs in config.txt.iscsi'
   become: yes
   lineinfile:
-    path: /boot/config.txt.iscsi
+    path: "{{ config_txt_path }}.iscsi"
     regex: "^\\s*initramfs\\s+initrd.img-[^\\s]+\\s+followkernel"
     line: 'initramfs initrd.img-{{ new_kernel_version }} followkernel'
     state: present

@@ -1,6 +1,7 @@
 ---
 
 - name: 'setup dhcp wait for network on boot'
+  when: is_raspbian
   register: bootwait_result
   become: yes
   shell:
@@ -13,6 +14,7 @@
     creates: /etc/systemd/system/dhcpcd.service.d/wait.conf
 
 - name: 'enable wait for network on boot'
+  when: is_raspbian
   register: bootwait_w_result
   become: yes
   lineinfile:
@@ -22,7 +24,8 @@
     backrefs: yes
 
 - name: 'enable dhcp for eth0 only'
-  register: bootwait_w_result
+  when: is_raspbian
+  register: bootwait_z_result
   become: yes
   lineinfile:
     path: /etc/systemd/system/dhcpcd.service.d/wait.conf
@@ -43,7 +46,7 @@
     mode: '0644'
 
 - name: 'update hosts file'
-  when: inventory_hostname != ansible_hostname
+  when: inventory_hostname != ansible_hostname and is_raspbian
   register: hosts_result
   become: yes
   lineinfile:
@@ -54,78 +57,80 @@
     group: root
     mode: '0644'
 
-- name: 'add cgroup enable cpuset to /boot/config.txt'
+- name: 'add cgroup enable cpuset to cmdline.txt'
   register: config_cgroup_enable_cpuset_result
   become: yes
   lineinfile:
-    path: /boot/cmdline.txt
+    path: "{{ cmdline_txt_path }}"
     regexp: '^(((?! cgroup_enable=cpuset).)*$)'
     line: '\1 cgroup_enable=cpuset'
     backrefs: yes
 
-- name: 'add cgroup memory to /boot/config.txt'
+- name: 'add cgroup memory to cmdline.txt'
   register: config_cgroup_memory_result
   become: yes
   lineinfile:
-    path: /boot/cmdline.txt
+    path: "{{ cmdline_txt_path }}"
     regexp: '^(((?! cgroup_memory=1).)*$)'
     line: '\1 cgroup_memory=1'
     backrefs: yes
 
-- name: 'add cgroup enable memory to /boot/config.txt'
+- name: 'add cgroup enable memory to cmdline.txt'
   register: config_cgroup_enable_memory_result
   become: yes
   lineinfile:
-    path: /boot/cmdline.txt
+    path: "{{ cmdline_txt_path }}"
     regexp: '^(((?! cgroup_enable=memory).)*$)'
     line: '\1 cgroup_enable=memory'
     backrefs: yes
 
 # see https://github.com/raspberrypi/firmware/blob/ed238d3329e39a68bde03bbc2dfc293c0c3dc93a/boot/overlays/README#L533
-- name: 'disable bluetooth devicetree'
-  register: config_disable_bt_dt_result
-  when: disable_bluetooth | default(False)
-  become: yes
-  lineinfile:
-    path: /boot/cmdline.txt
-    regexp: '^(((?! dtoverlay=disable-bt).)*$)'
-    line: '\1 dtoverlay=disable-bt'
-    backrefs: yes
+- block:
+    - name: 'disable bluetooth devicetree'
+      register: config_disable_bt_dt_result
+      become: yes
+      lineinfile:
+        path: "{{ cmdline_txt_path }}"
+        regexp: '^(((?! dtoverlay=disable-bt).)*$)'
+        line: '\1 dtoverlay=disable-bt'
+        backrefs: yes
 
-- name: 'disable bluetooth modem'
-  register: config_disable_bt_modem_result
-  when: disable_bluetooth | default(False)
-  become: yes
-  systemd:
-    name: hciuart
-    enabled: no
-    state: stopped
+    - name: 'disable bluetooth modem'
+      register: config_disable_bt_modem_result
+      become: yes
+      systemd:
+        name: hciuart
+        enabled: no
+        state: stopped
+  when: is_raspbian and (disable_bluetooth | default(False))
 
 - name: 'disable wifi'
   register: config_disable_wifi_result
-  when: disable_wifi | default(False)
+  when: is_raspbian and (disable_wifi | default(False))
   become: yes
   lineinfile:
-    path: /boot/cmdline.txt
+    path: "{{ cmdline_txt_path }}"
     regexp: '^(((?! dtoverlay=disable-wifi).)*$)'
     line: '\1 dtoverlay=disable-wifi'
     backrefs: yes
 
-- name: 'check if swap enabled'
-  register: swapcheck_result
-  shell: "free -m | grep Swap:"
-  changed_when: false
+- block:
+    - name: 'check if swap enabled'
+      register: swapcheck_result
+      shell: "free -m | grep Swap:"
+      changed_when: false
 
-# sudo swapon --summary : rc=0 if swap on rc=255 if not
-- name: 'turn off swap'
-  register: offswap_result
-  become: yes
-  command: "{{ item }}"
-  with_items:
-   - dphys-swapfile swapoff
-   - dphys-swapfile uninstall
-   - apt remove -qy dphys-swapfile
-  when: "swapcheck_result.stdout!='Swap:             0           0           0'"
+    # sudo swapon --summary : rc=0 if swap on rc=255 if not
+    - name: 'turn off swap'
+      register: offswap_result
+      become: yes
+      command: "{{ item }}"
+      with_items:
+       - dphys-swapfile swapoff
+       - dphys-swapfile uninstall
+       - apt remove -qy dphys-swapfile
+      when: "swapcheck_result.stdout!='Swap:             0           0           0'"
+  when: is_raspbian
 
 #- name: 'offswap debug'
 #  debug:
@@ -164,56 +169,60 @@
     state: mounted
 
 # see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#ensure-iptables-tooling-does-not-use-the-nftables-backend
-- name: 'set iptables to legacy'
-  become: yes
-  alternatives:
-    name: iptables
-    path: /usr/sbin/iptables-legacy 
+- block:
+    - name: 'set iptables to legacy'
+      become: yes
+      alternatives:
+        name: iptables
+        path: /usr/sbin/iptables-legacy 
 
-- name: 'set ip6tables to legacy'
-  become: yes
-  alternatives:
-    name: ip6tables
-    path: /usr/sbin/ip6tables-legacy 
+    - name: 'set ip6tables to legacy'
+      become: yes
+      alternatives:
+        name: ip6tables
+        path: /usr/sbin/ip6tables-legacy 
 
-## not available on pi
-#- name: 'set arptables to legacy'
-#  become: yes
-#  alternatives:
-#    name: arptables
-#    path: /usr/sbin/arptables-legacy 
+    ## not available on pi
+    #- name: 'set arptables to legacy'
+    #  become: yes
+    #  alternatives:
+    #    name: arptables
+    #    path: /usr/sbin/arptables-legacy 
 
-## not available on pi
-#- name: 'set ebtables to legacy'
-#  become: yes
-#  alternatives:
-#    name: ebtables
-#    path: /usr/sbin/ebtables-legacy 
+    ## not available on pi
+    #- name: 'set ebtables to legacy'
+    #  become: yes
+    #  alternatives:
+    #    name: ebtables
+    #    path: /usr/sbin/ebtables-legacy 
 
 
-## above switch to iptables legacy seems to break this despite it apprently being required according to
-## https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
-#- name: 'setup iptables bridging'
-#  when: inventory_hostname in groups['k8smasters']
-#  become: yes
-#  sysctl:
-#    name: net.bridge.bridge-nf-call-iptables
-#    value: "1"
-#    state: present
-#    sysctl_set: yes
-#    reload: yes
+    ## above switch to iptables legacy seems to break this despite it apprently being required according to
+    ## https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
+    #- name: 'setup iptables bridging'
+    #  when: inventory_hostname in groups['k8smasters']
+    #  become: yes
+    #  sysctl:
+    #    name: net.bridge.bridge-nf-call-iptables
+    #    value: "1"
+    #    state: present
+    #    sysctl_set: yes
+    #    reload: yes
+  when: is_raspbian
   
 - name: 'reboot after initial setup'
   when: |
     bootwait_result.changed
-      or hostname_result.changed
-      or hosts_result.changed
+      or (bootwait_w_result.changed | default(False))
+      or (bootwait_z_result.changed | default(False))
+      or (hostname_result.changed | default(False))
+      or (hosts_result.changed | default(False))
       or config_cgroup_enable_cpuset_result.changed
       or config_cgroup_memory_result.changed
       or config_cgroup_enable_memory_result.changed
       or tmp_ram_result.changed
       or log_ram_result.changed
-      or ((disable_wifi | default(False)) and config_disable_wifi_result.changed)
-      or ((disable_bluetooth | default(False)) and (config_disable_bt_dt_result.changed or config_disable_bt_modem_result.changed))
+      or (((disable_wifi | default(False)) and is_raspbian) and config_disable_wifi_result.changed)
+      or (((disable_bluetooth | default(False))) and is_raspian) and (config_disable_bt_dt_result.changed or config_disable_bt_modem_result.changed))
   become: yes
   reboot:

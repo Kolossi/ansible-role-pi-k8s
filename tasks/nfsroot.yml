@@ -91,7 +91,7 @@
   become: yes
   register: type_cmd
   lineinfile:
-    path: /boot/cmdline.txt
+    path: "{{ cmdline_txt_path }}"
     regexp: '^(.*)(rootfstype=ext4 *)(.*$)'
     line: '\1\3'
     backrefs: yes   
@@ -101,7 +101,7 @@
   become: yes
   register: sd_cmd
   lineinfile:
-    path: /boot/cmdline.txt
+    path: "{{ cmdline_txt_path }}"
     regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z-]* *)(.*$)'
     line: '\1\3'
     backrefs: yes   
@@ -111,7 +111,7 @@
   become: yes
   register: nfs_cmd
   lineinfile:
-    path: /boot/cmdline.txt
+    path: "{{ cmdline_txt_path }}"
     regexp: '^(((?! root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs).)*$)'
     line: '\1 root=/dev/nfs nfsroot={{ nfs_root_source | replace("{{ inventory_hostname }}",inventory_hostname) }},vers=3 rw rootfstype=nfs'
     backrefs: yes
@@ -121,7 +121,7 @@
   become: yes
   register: dhcp_cmd
   lineinfile:
-    path: /boot/cmdline.txt
+    path: "{{ cmdline_txt_path }}"
     regexp: '^(((?! ip=dhcp).)*$)'
     line: '\1 ip=dhcp'
     backrefs: yes

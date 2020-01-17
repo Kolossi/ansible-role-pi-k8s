@@ -1,0 +1,21 @@
+---
+
+- name: "is ubuntu"
+  set_fact:
+    is_ubuntu: "{{ True if (ansible_distribution=='Ubuntu') else False }}"
+
+- name: "is raspbian"
+  set_fact:
+    is_raspbian: "{{ False if (is_ubuntu) else True }}"
+
+- name: "get boot dir path"
+  set_fact:
+    boot_path: "{{ '/boot/firmware' if (is_ubuntu) else '/boot' }}"
+
+- name: "get config.txt path"
+  set_fact:
+    config_txt_path: "{{ boot_path }}/config.txt"
+
+- name: "get cmdline.txt path"
+  set_fact:
+    cmdline_txt_path: "{{ boot_path }}/cmdline.txt"

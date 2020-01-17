@@ -152,8 +152,8 @@
 - name: 'copy cmdline.txt to cmdline.txt.before_iscsi'
   become: yes
   copy:
-    src: /boot/cmdline.txt
-    dest: /boot/cmdline.txt.before_iscsi
+    src: "{{ cmdline_txt_path }}"
+    dest: "{{ cmdline_txt_path }}.before_iscsi"
     remote_src: yes
     force: no
   when: iscsi_root_found is not defined
@@ -162,8 +162,8 @@
 - name: 'copy cmdline.txt to cmdline.txt.iscsi'
   become: yes
   copy:
-    src: /boot/cmdline.txt
-    dest: /boot/cmdline.txt.iscsi
+    src: "{{ cmdline_txt_path }}"
+    dest: "{{ cmdline_txt_path }}.iscsi"
     remote_src: yes
     force: yes
   when: iscsi_root_found is not defined
@@ -172,8 +172,8 @@
 - name: 'copy config.txt to config.txt.before_iscsi'
   become: yes
   copy:
-    src: /boot/config.txt
-    dest: /boot/config.txt.before_iscsi
+    src: "{{ config_txt_path }}"
+    dest: "{{ config_txt_path }}.before_iscsi"
     remote_src: yes
     force: no
   when: iscsi_root_found is not defined
@@ -182,8 +182,8 @@
 - name: 'copy config.txt to config.txt.iscsi'
   become: yes
   copy:
-    src: /boot/config.txt
-    dest: /boot/config.txt.iscsi
+    src: "{{ config_txt_path }}"
+    dest: "{{ config_txt_path }}.iscsi"
     remote_src: yes
     force: yes
   when: iscsi_root_found is not defined
@@ -201,7 +201,7 @@
 - name: 'add initramfs to config.txt.iscsi'
   become: yes
   lineinfile:
-    path: /boot/config.txt.iscsi
+    path: "{{ config_txt_path }}.iscsi"
     line: 'initramfs initrd.img-{{ ansible_kernel }} followkernel'
   when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
@@ -210,7 +210,7 @@
   become: yes
   register: sd_cmd
   lineinfile:
-    path: "/boot/cmdline.txt.iscsi"
+    path: "{{ cmdline_txt_path }}.iscsi"
     regexp: '^(.*)(root=PARTUUID=[0-9a-zA-Z-]* *)(.*$)'
     line: '\1\3'
     backrefs: yes   
@@ -227,7 +227,7 @@
   become: yes
   register: iscsi_cmd
   lineinfile:
-    path: "/boot/cmdline.txt.iscsi"
+    path: "{{ cmdline_txt_path }}.iscsi"
     regexp: '^(((?! {{ iscsi_cmdline }}).)*$)'
     line: '\1 {{ iscsi_cmdline }}'
     backrefs: yes
@@ -238,7 +238,7 @@
   become: yes
   register: type_cmd
   lineinfile:
-    path: "/boot/cmdline.txt.iscsi"
+    path: "{{ cmdline_txt_path }}.iscsi"
     regexp: '^(((?! rootfstype=ext4).)*$)'
     line: '\1 rootfstype=ext4'
     backrefs: yes
@@ -249,8 +249,8 @@
   become: yes
   register: cmdlinecopy
   copy:
-    src: /boot/cmdline.txt.iscsi
-    dest: /boot/cmdline.txt
+    src: "{{ cmdline_txt_path }}.iscsi"
+    dest: "{{ cmdline_txt_path }}"
     remote_src: yes
     force: yes
   tags: iscsiroot,netroot
@@ -260,8 +260,8 @@
   become: yes
   register: configcopy
   copy:
-    src: /boot/config.txt.iscsi
-    dest: /boot/config.txt
+    src: "{{ config_txt_path }}.iscsi"
+    dest: "{{ config_txt_path }}"
     remote_src: yes
     force: yes
   tags: iscsiroot,netroot
