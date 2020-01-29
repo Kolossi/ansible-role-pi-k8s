@@ -17,20 +17,25 @@
     install_dashboard:     yes
     dashboard_version:     "v2.0.0-beta5"
 
-    disable_wifi: yes
-    disable_bluetooth: yes
+    disable_wifi:          yes
+    disable_bluetooth:     yes
 
     local_kubeconfig_filename: "~/.kube/pi-k8s-kubeconfig.yaml"
 
 ## move tmp/log storage off sd to ram
-## if using nfs root, best to leave writing to root
+## if using iscsi or nfs root, best to leave writing to root by setting "no"
+## but set to "yes" is using sd card
     tmp_ram: no
     log_ram: no
+
+## to use a specific raspi kernel version, set a commit sha or
+## version number from commit messages at https://github.com/Hexxeh/rpi-firmware/commits/master
+    kernel_version: "4.19.81"
 
 ## convert pi to use root fs on an nfs host, not the sd card
 ## (Note: docker does not support nfs)
 ## can include "{{ inventory_hostname }}" which will be replaced as expected
-#     nfs_root_source: "[my-nfs-server-ip]:/[my-mount-path]/{{ inventory_hostname }}"
+#    nfs_root_source: "[my-nfs-server-ip]:/[my-mount-path]/{{ inventory_hostname }}"
 
 ## convert pi to use root fs on an iscsi lun, not the sd card
 ## can include "{{ inventory_hostname}}" which will be replaced as expected
