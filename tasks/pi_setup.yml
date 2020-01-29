@@ -212,17 +212,18 @@
   
 - name: 'reboot after initial setup'
   when: |
-    bootwait_result.changed
-      or (bootwait_w_result.changed | default(False))
-      or (bootwait_z_result.changed | default(False))
-      or (hostname_result.changed | default(False))
-      or (hosts_result.changed | default(False))
+    (bootwait_result is defined and bootwait_result.changed)
+      or (bootwait_w_result is defined and bootwait_w_result.changed)
+      or (bootwait_z_result is defined and bootwait_z_result.changed)
+      or (hostname_result is defined and hostname_result.changed)
+      or (hosts_result is defined and hosts_result.changed)
       or config_cgroup_enable_cpuset_result.changed
       or config_cgroup_memory_result.changed
       or config_cgroup_enable_memory_result.changed
-      or tmp_ram_result.changed
-      or log_ram_result.changed
-      or (((disable_wifi | default(False)) and is_raspbian) and config_disable_wifi_result.changed)
-      or (((disable_bluetooth | default(False))) and is_raspian) and (config_disable_bt_dt_result.changed or config_disable_bt_modem_result.changed))
+      or (tmp_ram_result is defined and tmp_ram_result.changed)
+      or (log_ram_result is defined and log_ram_result.changed)
+      or (config_disable_wifi_result is defined and config_disable_wifi_result.changed)
+      or (config_disable_bt_dt_result is defined and config_disable_bt_dt_result.changed)
+      or (config_disable_bt_modem_result is defined and config_disable_bt_modem_result.changed)
   become: yes
   reboot:

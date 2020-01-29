@@ -1,5 +1,44 @@
 ---
 
+- name: 'hold ubuntu packages which cant upgrade on pi'
+  block:
+    - name: 'Get held packages'
+      become: yes
+      command: apt-mark showhold
+      register: held_packages
+      changed_when: false
+
+    - name: 'hold linux-firmware'
+      become: yes
+      command: apt-mark hold linux-firmware
+      when: '"linux-firmware" not in held_packages.stdout'
+
+    - name: 'hold flash-kernel'
+      become: yes
+      command: apt-mark hold flash-kernel
+      when: '"flash-kernel" not in held_packages.stdout'
+
+    - name: hold initramfs-tools
+      become: yes
+      command: apt-mark hold initramfs-tools
+      when: '"initramfs-tools" not in held_packages.stdout'
+
+    - name: 'hold linux-raspi2'
+      become: yes
+      command: apt-mark hold linux-raspi2
+      when: '"linux-raspi2" not in held_packages.stdout'
+
+    - name: 'hold linux-image-raspi2'
+      become: yes
+      command: apt-mark hold linux-image-raspi2
+      when: '"linux-image-raspi2" not in held_packages.stdout'
+
+    - name: 'hold linux-headers-raspi2'
+      become: yes
+      command: apt-mark hold linux-headers-raspi2
+      when: '"linux-headers-raspi2" not in held_packages.stdout'
+  when: is_ubuntu
+
 - name: 'Upgrade all packages to the latest version'
   become: yes
   register: upgrade_result

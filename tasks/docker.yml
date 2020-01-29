@@ -10,6 +10,13 @@
 #  args:
 #    warn: false # prevent warning about curl
 
+- name: 'Update apt'
+  become: yes
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    update_cache: yes
+    cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
+
 - name: 'setup apt over https'
   become: yes
   apt:
@@ -62,11 +69,11 @@
   command: apt-mark hold docker-ce-cli
   when: '"docker-ce-cli" not in held_packages.stdout and install_docker_result.changed'
  
-- name: 'add pi user to docker group'
+- name: 'add user to docker group'
   register: pi_user_result
   become: yes
   user:
-    name: pi
+    name: "{{ ansible_user_id }}"
     append: yes
     groups: docker
 
@@ -112,7 +119,7 @@
   when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed
 # or create_docker_service_directory.changed
   shell:
-    cmd: "docker run {{ 'arm64' if (is_ubuntu) else 'armhf' }}/hello-world"
+    cmd: "docker run {{ 'arm64v8' if (is_ubuntu) else 'armhf' }}/hello-world"
 
 - name: 'reboot after docker install'
   when: install_docker_result.changed or pi_user_result.changed or daemon_json_result.changed
