@@ -36,7 +36,7 @@
   command: apt-mark showhold
   register: held_packages
   changed_when: false
-  when: held_packages is not defined
+#  when: held_packages is not defined
 
 - name: hold kubeadm
   become: yes

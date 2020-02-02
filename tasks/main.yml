@@ -34,7 +34,7 @@
 
 - include_tasks: "dashboard.yml"
   tags: dashboard
-  when: install_dashboard and dashboard_version is defined
+  when: install_dashboard|default(False) and dashboard_version is defined
 
 - import_tasks: delete_token.yml
   tags: delete_token, never # <- never means this will only run if delete_token explictly given on the commandline
