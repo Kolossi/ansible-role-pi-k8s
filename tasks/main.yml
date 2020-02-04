@@ -3,6 +3,14 @@
 - import_tasks: process_facts.yml
   tags: always
 
+- include_tasks: "pi_setup_raspbian.yml"
+  tags: pi_setup
+  when: is_raspbian
+
+- include_tasks: "pi_setup_ubuntu.yml"
+  tags: pi_setup
+  when: is_ubuntu
+
 - import_tasks: pi_setup.yml
   tags: pi_setup
 

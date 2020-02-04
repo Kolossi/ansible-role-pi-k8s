@@ -91,7 +91,7 @@
       tempfile:
         state: directory
         suffix: "iscsitemp"
-        path: "/home/pi"
+        path: "{{ ansible_env.HOME }}"
       register: iscsitemp
 
     - name: "mount iscsi root source"
@@ -104,10 +104,13 @@
         state: mounted
       register: iscsimount
 
+# rc=24 occurs when a file or directory "vanished" before rsync got a chance to
+# copy it - happens with e.g. log/lock files
     - name: "rsync copy root partition"
       become: yes
       register: rsync
       command: "rsync -xaq --delete --exclude {{ iscsitemp.path }} / {{ iscsitemp.path }}"
+      failed_when: rsync.rc != 0 and rsync.rc != 24
 
     - name: "comment out sd card root mount"
       become: yes

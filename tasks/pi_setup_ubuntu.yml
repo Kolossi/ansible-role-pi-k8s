@@ -1,0 +1,45 @@
+---
+
+- name: 'disable ubuntu flash updates'
+  become: yes
+  file:
+    path: "/etc/initramfs/post-update.d/flash-kernel"
+    state: absent
+
+- name: 'clear unneeded initramfs'
+  become: yes
+  shell:
+    cmd: 'update-initramfs -d -k all'
+
+# thanks https://www.mydailytutorials.com/ansible-delete-multiple-files-directories-ansible/
+- block:
+  - name: 'get old kernel files to clear'
+    find:
+      paths:
+        - '/boot'
+        - '/boot/firmware'
+      patterns: '*-raspi2'
+    register: kernel_files_to_clear
+
+  - name: 'remove old kernel files'
+    become: yes
+    file:
+      path: "{{ item.path }}"
+      state: absent
+    with_items: "{{ kernel_files_to_clear.files }}"
+
+# fix boot hang because of low entropy due to missing mouse
+# thanks: https://www.linuxquestions.org/questions/debian-26/debian-hangs-at-boot-with-random-crng-init-done-4175613405/#post5889997
+- name: "install haveged"
+  become: yes
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    name: 'haveged'
+    state: present
+
+- name: "enable haveged"
+  become: yes
+  systemd:
+    name: "haveged"
+    enabled: yes
+  
