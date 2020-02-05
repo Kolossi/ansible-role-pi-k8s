@@ -20,6 +20,7 @@
     line: '#\1'
     backrefs: yes
   tags: iscsiroot,netroot
+  when: is_raspbian
 
 - name: "enable iscsi service"
   become: yes

@@ -6,6 +6,13 @@
     path: "/etc/initramfs/post-update.d/flash-kernel"
     state: absent
 
+- name: 'uninstall unattended-upgrades'
+  become: yes
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    name: 'unattended-upgrades'
+    state: absent
+
 - name: 'clear unneeded initramfs'
   become: yes
   shell:
