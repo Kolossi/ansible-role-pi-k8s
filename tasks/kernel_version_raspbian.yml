@@ -4,48 +4,58 @@
   run_once: yes
   set_fact:
     kernel_commits: "{{ lookup('url', 'https://api.github.com/repos/Hexxeh/rpi-firmware/commits') }}"
-  tags: get_version
+  tags: get_kernel_version
 
-# thanks: https://www.tailored.cloud/devops/advanced-list-operations-ansible/
-#         https://stackoverflow.com/a/40659528/2738122
-- name: "find matching shas"
-  run_once: yes
+- name: "get commits from sha"
   set_fact:
-    matching_commit: "{% for commit_data in kernel_commits %}\
-                         {% if commit_data.sha.startswith(kernel_version) or commit_data.commit.message.startswith('kernel: Bump to '+kernel_version)%}\
-                           {{ commit_data }}\
-                         {% endif %}\
-                       {% endfor %}"
-    failed_when: matching_commit | count > 1
-  tags: get_version
+    matching_commits: '{{ (kernel_commits|selectattr("sha","equalto",kernel_version))|list }}'
+  tags: get_kernel_version
+
+- name: "get commits from version"
+  set_fact:
+    matching_commits: '{{ (kernel_commits|selectattr("commit.message","match","^kernel: Bump to "+kernel_version))|list }}'
+  when: matching_commits is not defined or matching_commits|count==0
+  tags: get_kernel_version
+
+- name: "fail if no matching commits found"
+  fail:
+    msg: "No kernel could be found matching {{kernel_version}}"
+  when: matching_commits is not defined or matching_commits|count==0
+  tags: get_kernel_version
+
+- name: "select matching commit"
+  set_fact:
+    matching_commit: '{{matching_commits[0]}}'
+  tags: get_kernel_version
 
 - name: "set requested kernel details"
   set_fact:
     requested_kernel_sha: '{{ matching_commit.sha }}'
     new_kernel_version: "{{ matching_commit.commit.message.splitlines()[0] | regex_replace('^kernel: Bump to ([0-9]+\\.[0-9]+\\.[0-9]+).*','\\1')}}{{ ansible_kernel | regex_replace('^[0-9]+\\.[0-9]+\\.[0-9]+(\\-?v?[0-9]?l+\\+?)$','\\1') }}"
-  tags: get_version
+  tags: get_kernel_version
 
 - name: "set configs"
   set_fact:
     old_config: " initramfs initrd.img-{{ ansible_kernel }} followkernel"
     regex_exp: "{{'initramfs[ \\t]+initrd.img-'+ansible_kernel+'[ \\t]+followkernel'}}" 
     regex_repl: "{{'initramfs initrd.img-'+new_kernel_version+' followkernel'}}" 
-  tags: get_version
+  tags: get_kernel_version
 
 - name: "set new config"
   set_fact:
       new_config: "{{ old_config | regex_replace(regex_exp,regex_repl) }}"
-  tags: get_version
+  tags: get_kernel_version
 
-#- debug:
-#    msg:
-#      - "%ansible_kernel%: {{ansible_kernel}}"
-#      - "%requested_kernel_sha%: {{ requested_kernel_sha }}"
-#      - "%new_kernel_version%: {{ new_kernel_version }}"
-#      - "%new_config%: {{ new_config }}"
-#      - "%regex_exp%: {{ regex_exp }}"
-#      - "%regex_repl%: {{ regex_repl }}"
-#  tags: get_version
+- debug:
+    verbosity: 3
+    msg:
+      - "%ansible_kernel%: {{ansible_kernel}}"
+      - "%requested_kernel_sha%: {{ requested_kernel_sha }}"
+      - "%new_kernel_version%: {{ new_kernel_version }}"
+      - "%new_config%: {{ new_config }}"
+      - "%regex_exp%: {{ regex_exp }}"
+      - "%regex_repl%: {{ regex_repl }}"
+  tags: get_kernel_version
 
 - name: "find /boot/.firmware_revision before update"
   register: fwrev
@@ -61,15 +71,16 @@
 - name: "set kernel sha"
   set_fact:
       current_kernel_sha: "{{ current_kernel_sha['content'] | b64decode | replace('\n', '') }}"
-  tags: get_version
+  tags: get_kernel_version
   when: fwrev.stat.exists and current_kernel_sha is defined
 
-#- debug:
-#    msg:
-#      - "%current_kernel_sha defined%: {{ current_kernel_sha is defined}}"
-#      - "%current_kernel_sha%: {{ current_kernel_sha | default('') }}"
-#      - "%requested_kernel_sha%: {{ requested_kernel_sha }}"
-#  tags: get_version
+- debug:
+    verbosity: 3
+    msg:
+      - "%current_kernel_sha defined%: {{ current_kernel_sha is defined}}"
+      - "%current_kernel_sha%: {{ current_kernel_sha | default('') }}"
+      - "%requested_kernel_sha%: {{ requested_kernel_sha }}"
+  tags: get_kernel_version
 
 - name: "do rpi-update"
   become: yes
@@ -86,12 +97,13 @@
 - name: "set new kernel sha"
   set_fact:
       new_kernel_sha: "{{ new_kernel_sha['content'] | b64decode | replace('\n', '') }}"
-  tags: get_version
+  tags: get_kernel_version
   when: new_kernel_sha is defined
 
-#- debug:
-#    msg: "%new_kernel_sha%: {{ new_kernel_sha }}"
-#  tags: get_version
+- debug:
+    verbosity: 3
+    msg: "%new_kernel_sha%: {{ new_kernel_sha }}"
+  tags: get_kernel_version
 
 - name: "fail if firmware update has not succeeded"
   fail:
@@ -125,11 +137,12 @@
     create: no
   failed_when: no
 
-#- debug:
-#    msg:
-#      - "%rpi_update.changed%: {{ rpi_update.changed }}"
-#      - "%initramfs.changed%: {{ initramfs.changed }}"
-#      - "%config_kernel.changed%: {{ config_kernel.changed }}"
+- debug:
+    verbosity: 3
+    msg:
+      - "%rpi_update.changed%: {{ rpi_update.changed }}"
+      - "%initramfs.changed%: {{ initramfs.changed }}"
+      - "%config_kernel.changed%: {{ config_kernel.changed }}"
  
 - name: "record kernel updated"
   set_fact:

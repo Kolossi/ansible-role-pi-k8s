@@ -8,6 +8,10 @@
   set_fact:
     is_raspbian: "{{ False if (is_ubuntu) else True }}"
 
+- name: "os name"
+  set_fact:
+    os_name: "{{ 'ubuntu' if (is_ubuntu) else 'raspbian' }}"
+
 - name: "get boot dir path"
   set_fact:
     boot_path: "{{ '/boot/firmware' if (is_ubuntu) else '/boot' }}"

@@ -56,8 +56,9 @@
     force_apt_get: yes # there's no need to use aptitude
     autoremove: yes
 
-- import_tasks: 'kernel_version.yml'
-  when: kernel_version is defined
+# for ubuntu, this will have been performed earlier to support iscsi
+- include_tasks: 'kernel_version_raspbian.yml'
+  when: kernel_version is defined and is_raspbian
   tags: kernelversion
 
 - debug:
