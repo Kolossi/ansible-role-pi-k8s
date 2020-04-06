@@ -1,68 +1,56 @@
 ---
 
-- name: "get kernel commit details"
+- name: "get kernel release details"
   run_once: yes
   set_fact:
-    kernel_commits: "{{ lookup('url', 'https://api.github.com/repos/sakaki-/bcm2711-kernel/commits') }}"
-  tags: get_kernel_version
+    kernel_releases: "{{ lookup('url', 'https://api.github.com/repos/sakaki-/bcm2711-kernel/releases') }}"
+  tags: get_kernel_version,kernel_version
 
-- name: "get commits from sha"
+- name: "get releases from version"
+  run_once: yes
   set_fact:
-    matching_commits: '{{ (kernel_commits|selectattr("sha","equalto",kernel_version))|list }}'
-  tags: get_kernel_version
+    matching_releases: '{{ (kernel_releases|selectattr("name","match","^"+kernel_version))|list }}'
+  tags: get_kernel_version,kernel_version
 
-- name: "get commits from version"
-  set_fact:
-    matching_commits: '{{ (kernel_commits|selectattr("commit.message","match","^Update for release "+kernel_version))|list }}'
-  when: matching_commits is not defined or matching_commits|count==0
-  tags: get_kernel_version
-
-- name: "fail if no matching commits found"
+- name: "fail if no matching releases found"
+  run_once: yes
   fail:
     msg: "No kernel could be found matching {{kernel_version}}"
-  when: matching_commits is not defined or matching_commits|count==0
-  tags: get_kernel_version
+  when: matching_releases is not defined or matching_releases|count==0
+  tags: get_kernel_version,kernel_version
 
-- name: "select matching commit"
+- name: "select matching releases"
+  run_once: yes
   set_fact:
-    matching_commit: '{{matching_commits[0]}}'
-  tags: get_kernel_version
-
-- name: "set requested kernel details"
-  set_fact:
-    kernel_sha: '{{ matching_commit.sha }}'
-  tags: get_kernel_version
+    matching_release: '{{matching_releases[0]}}'
+  tags: get_kernel_version,kernel_version
 
 - debug:
     verbosity: 3
     msg:
-      - "%kernel_commits%: {{kernel_commits}}"
-      - "%matching_commit%: {{matching_commit}}"
+      - "%kernel_releases%: {{kernel_releases}}"
+      - "%matching_release%: {{matching_release}}"
       - "%kernel_version%: {{ kernel_version }}"
-  tags: get_kernel_version
+  run_once: yes
+  tags: get_kernel_version,kernel_version
 
 - name: "set requested kernel details"
-  set_fact:
-    requested_kernel_sha: '{{ matching_commit.sha }}'
-    kernel_version: "{{ matching_commit.commit.message.splitlines()[0] | regex_replace('^Update for release ([0-9]+\\.[0-9]+\\.[0-9]+).*','\\1')}}"
-  tags: get_kernel_version
-
-- name: "set paths"
   run_once: yes
   set_fact:
-    kernel_url: "https://github.com/sakaki-/bcm2711-kernel/releases/download/{{ kernel_version }}/bcm2711-kernel-{{ kernel_version }}.tar.xz"
-    kernel_tar_path: "/tmp/bcm2711-kernel-{{ kernel_version }}.tar.xz"
-  tags: get_kernel_version
+    kernel_full_version: "{{ matching_release.name }}"
+    kernel_url: "{{ matching_release.assets[0].browser_download_url }}"
+    kernel_tar_path: "/tmp/bcm2711-kernel-{{ matching_release.name }}.tar.xz"
+  tags: get_kernel_version,kernel_version
     
 - debug:
     verbosity: 3
     msg:
-      - "%kernel_sha%: {{kernel_sha}}"
-      - "%requested_kernel_sha%: {{requested_kernel_sha}}"
       - "%kernel_version%: {{ kernel_version }}"
+      - "%kernel_full_version%: {{ kernel_full_version }}"
       - "%kernel_url%: {{ kernel_url }}"
       - "%kernel_tar_path%: {{ kernel_tar_path }}"
-  tags: get_kernel_version
+  run_once: yes
+  tags: get_kernel_version,kernel_version
 
 - name: "get kernel tar"
   run_once: yes
@@ -70,6 +58,8 @@
   get_url:
     url: "{{ kernel_url }}"
     dest: "{{ kernel_tar_path }}"
+    timeout: 1800
+  tags: kernel_version
 
 - name: "is kernel installed"
   become: yes
@@ -80,23 +70,59 @@
     file_type: directory
     recurse: no
   failed_when: kernel_modules.matched > 1
+  tags: kernel_version
 
-%%% NOPE! - /boot in tar needs to go to /boot/firmware
-- name: "extract kernel to target"
-  register: kernel_extract
-  become: yes
-  unarchive:
-    remote_src: no
-    src: "{{ kernel_tar_path }}"
-    dest: "/"
+- name: "install kernel"
+  block:
+    - name: "extract kernel ./lib to target"
+      register: kernel_lib_extract
+      become: yes
+      unarchive:
+        remote_src: no
+        src: "{{ kernel_tar_path }}"
+        dest: "/"
+        exclude:
+        - "./boot"
+
+    - name: "extract kernel ./boot to target"
+      register: kernel_boot_extract
+      become: yes
+      unarchive:
+        remote_src: no
+        src: "{{ kernel_tar_path }}"
+        dest: "{{ boot_path }}"
+        exclude:
+        - "./lib"
+
+    - name: "copy kernel ./boot to correct location"
+      become: yes
+      copy:
+        remote_src: yes
+        src: "{{ boot_path }}/boot/"
+        dest: "{{ boot_path }}/"
+
+    - name: "remove ./boot files from temp extraction location"
+      become: yes
+      file:
+        path: "{{ boot_path }}/boot"
+        state: absent
+    
+    - name: "comment out previous kernel in config.txt"
+      become: yes
+      lineinfile:
+        path: "{{ config_txt_path }}"
+        regexp: '^((?<!#)kernel=(?!kernel8-p4\.img).*)'
+        line: '#\1'
+        backrefs: yes
+        create: no
+
+    - name: 'add kernel in config.txt'
+      become: yes
+      register: config_kernel
+      lineinfile:
+        path: "{{ config_txt_path }}"
+        line: 'kernel=kernel8-p4.img'
+        state: present
+        create: no
   when: kernel_modules.matched == 0
-
-%%% NOPE! - need to first comment out any exiting kernel=... that _isnt_ kernel8-p4.img
-- name: 'add or update kernel in config.txt'
-  become: yes
-  register: config_kernel
-  lineinfile:
-    path: "{{ config_txt_path }}"
-    line: 'kernel=kernel8-p4.img'
-    state: present
-    create: no
+  tags: kernel_version

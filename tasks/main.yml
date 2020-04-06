@@ -7,7 +7,7 @@
   tags: pi_setup
 
 - import_tasks: pi_setup.yml
-  tags: pi_setup
+  tags: pi_setup,kernel_version,get_kernel_version
 
 - include_tasks: "nfsroot.yml"
   tags: netroot, nfsroot

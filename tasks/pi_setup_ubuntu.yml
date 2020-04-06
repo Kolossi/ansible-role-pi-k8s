@@ -1,9 +1,16 @@
 ---
+#- name: 'disable ubuntu flash updates'
+#  become: yes
+#  file:
+#    path: "/etc/initramfs/post-update.d/flash-kernel"
+#    state: absent
+#  tags: pi_setup
 
-- name: 'disable ubuntu flash updates'
+- name: 'uninstall ubuntu flash-kernel'
   become: yes
-  file:
-    path: "/etc/initramfs/post-update.d/flash-kernel"
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    name: 'flash-kernel'
     state: absent
   tags: pi_setup
 
@@ -13,6 +20,14 @@
     force_apt_get: yes # there's no need to use aptitude
     name: 'unattended-upgrades'
     state: absent
+  tags: pi_setup
+
+- name: 'install nfs-common'
+  become: yes
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    name: 'nfs-common'
+    state: present
   tags: pi_setup
 
 - name: 'clear unneeded initramfs'
@@ -57,6 +72,39 @@
     enabled: yes
   tags: pi_setup
   
+- name: "comment out previous kernel (including 32 bit armhf default) in config.txt"
+  become: yes
+  lineinfile:
+    path: "{{ config_txt_path }}"
+    regexp: '^((?<!#)kernel=(?!kernel8-p4\.img).*)'
+    line: '#\1'
+    backrefs: yes
+    create: no
+  tags: pi_setup
+
+- name: 'add x64 kernel in config.txt'
+  become: yes
+  register: config_kernel
+  lineinfile:
+    path: "{{ config_txt_path }}"
+    line: 'kernel=kernel8-p4.img'
+    state: present
+    create: no
+  tags: pi_setup
+
+- name: "set ntp server"
+  when: ntp_servers is defined
+  become: yes
+  lineinfile:
+    path: "/etc/systemd/timesyncd.conf"
+    line: "NTP={{ ntp_servers }}"
+    regexp: '^\s*#?\s*(NTP=).*$'
+              
+    insertafter: '\[Time\]'
+    state: present
+  register: ntp_server_result
+  tags: pi_setup
+
 - include_tasks: 'kernel_version_ubuntu.yml'
   when: kernel_version is defined
-  tags: pi_setup, kernelversion
+  tags: pi_setup,get_kernel_version,kernel_version

@@ -66,7 +66,6 @@
       - "%upgrade_result.changed%: {{ upgrade_result.changed }}"
       - "%autoremove_result.changed%: {{ autoremove_result.changed }}"
       - "%kernel_version_changed | default(False)%: {{ kernel_version_changed|default(False) }}"
-      - "%kernel_version_changed%: {{ kernel_version_changed }}"
   tags: kernelversion
 
 - name: 'reboot after updates'

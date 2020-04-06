@@ -1,0 +1,12 @@
+%%%nginx-check-result (compare to cni_flannel.yml)
+- name: 'install nginx ingress'
+  when: inventory_hostname in groups['k8smasters'] and nginx_version is defined and nginx_check_result.rc != 0
+  any_errors_fatal: yes
+  # see latest commit sha in https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
+  shell:
+#    cmd: 'curl -fsSL https://raw.githubusercontent.com/coreos/flannel/{{ flannel_version }}/Documentation/kube-flannel.yml | sed "s/amd64/arm/g" | sed "s/flanneld/flanneld --iface=eth0/g" | kubectl apply -f -'
+#    cmd: 'curl -fsSL https://raw.githubusercontent.com/coreos/flannel/{{ flannel_version }}/Documentation/kube-flannel.yml | sed "s/flanneld/flanneld --iface=eth0/g" | kubectl apply -f -'
+    cmd: 'curl -fsSL https://raw.githubusercontent.com/kubernetes/ingress-nginx/nginx-{{ nginx_version }}/deploy/static/mandatory.yaml | sed "s|(image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller)(:{{ nginx_version }})|\1-arm{{ "64" if is_ubuntu else "" }}\2|g" | kubectl apply -f -'
+  args:
+   warn: no
+  tags: ingress,nginx

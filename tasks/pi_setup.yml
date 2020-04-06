@@ -86,6 +86,9 @@
       or (config_disable_wifi_result is defined and config_disable_wifi_result.changed)
       or (config_disable_bt_dt_result is defined and config_disable_bt_dt_result.changed)
       or (config_disable_bt_modem_result is defined and config_disable_bt_modem_result.changed)
-      or (kernel_extract is defined and kernel_extract.changed)
+      or (kernel_lib_extract is defined and kernel_lib_extract.changed)
+      or (kernel_boot is defined and kernel_boot_extract.changed)
+      or (config_kernel is defined and config_kernel.changed)
+      or (ntp_server_result is defined and ntp_server_result.changed)
   become: yes
   reboot:
