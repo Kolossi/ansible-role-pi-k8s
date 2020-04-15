@@ -92,3 +92,4 @@
       or (ntp_server_result is defined and ntp_server_result.changed)
   become: yes
   reboot:
+  tags: reboot

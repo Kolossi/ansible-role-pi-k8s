@@ -1,9 +1,11 @@
 ---
 
 ######### see https://www.domoticz.com/forum/viewtopic.php?t=28797
+#########     https://www.hiroom2.com/2018/05/05/ubuntu-1804-open-iscsi-en/#sec-3
 
 - name: "install open-iscsi & initramfs-tools"
   become: yes
+  register: iscsi_install
   apt:
     force_apt_get: yes # there's no need to use aptitude
     name: ['open-iscsi','initramfs-tools']
@@ -24,11 +26,18 @@
 
 - name: "enable iscsi service"
   become: yes
+  register: iscsi_service
   systemd:
-    name: iscsi.service
+    name: "{{ 'open-iscsi.service' if (is_ubuntu) else 'iscsi.service' }}"
     enabled: yes
-    state: "{{'restarted' if iscsi_iser.changed else 'started'}}"
+    state: "{{'restarted' if (iscsi_iser is defined and iscsi_iser.changed) else 'started'}}"
   tags: iscsiroot,netroot
+
+- name: 'reboot after setting up iscsi service'
+  become: yes
+  reboot:
+  when: iscsi_install.changed or iscsi_iser.changed or iscsi_service.changed
+  tags: iscsiroot,netroot,reboot
 
 - name: "check for existing iscsi root"
   set_fact:
@@ -62,6 +71,18 @@
 - name: "make ext4 filesystem on iscsi device"
   become: yes
   register: mkfs_result
+  filesystem:
+    fstype: ext4
+    dev: "{{ iscsi_device }}"
+    force: yes
+  when: iscsi_root_found is not defined
+  tags: iscsiroot,netroot
+
+# do not combine with creation above, filesystem module does not support
+# create and resize, it will only do resize if both options given
+- name: "expand ext4 filesystem to whole iscsi device"
+  become: yes
+  register: mkfs_resize_result
   filesystem:
     fstype: ext4
     dev: "{{ iscsi_device }}"
@@ -110,17 +131,14 @@
     - name: "rsync copy root partition"
       become: yes
       register: rsync
-      command: "rsync -xaq --delete --exclude {{ iscsitemp.path }} / {{ iscsitemp.path }}"
+      command: "rsync -xaq --delete-before --exclude {{ iscsitemp.path }} / {{ iscsitemp.path }}"
       failed_when: rsync.rc != 0 and rsync.rc != 24
 
-#%%% continue here
-#%%% this is where it fails on ubuntu
-#%%% possibly see https://www.hiroom2.com/2018/05/05/ubuntu-1804-open-iscsi-en/#sec-3
     - name: "comment out sd card root mount"
       become: yes
       lineinfile:
         path: "{{ iscsitemp.path}}/etc/fstab"
-        regexp: "{{ '^((LABEL=writable  / )$)' if (is_ubuntu) else '^((PARTUUID=[0-9a-zA-Z-]*  / .*)$)' }}"
+        regexp: "{{ '^((LABEL=writable  / .*)$)' if (is_ubuntu) else '^((PARTUUID=[0-9a-zA-Z-]*  / .*)$)' }}"
         line: '#\1'
         backrefs: yes
 
@@ -205,6 +223,22 @@
   when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
+- name: 'move initramfs to /boot/firmware'
+  become: yes
+  command: "mv -f /boot/initrd.img-{{ ansible_kernel }} /boot/firmware/initrd.img-{{ ansible_kernel }}"
+  args:
+    removes: "/boot/initrd.img-{{ ansible_kernel }}"
+  when: is_ubuntu
+  tags: iscsiroot,netroot
+
+- name: "remove old ubunut initrd"
+  become: yes
+  file:
+    path: /boot/firmware/initrd.img
+    state: absent
+  when: is_ubuntu
+  tags: iscsiroot,netroot
+
 - name: 'add initramfs to config.txt.iscsi'
   become: yes
   lineinfile:
@@ -278,5 +312,5 @@
   become: yes
   reboot:
   when: iscsi_root_dontinstall is not defined and ((iscsi_root_found is not defined and not rsync.failed) or cmdlinecopy.changed or configcopy.changed)
-  tags: iscsiroot,netroot
+  tags: iscsiroot,netroot,reboot
 

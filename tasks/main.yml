@@ -35,6 +35,10 @@
 - import_tasks: kubernetes_worker.yml
   tags: kubernetes,kubernetes_worker
 
+- include_tasks: ingress_nginx.yml
+  tags: ingress,nginx
+  when: nginx_ingress_version is defined
+
 - include_tasks: "dashboard.yml"
   tags: dashboard
   when: install_dashboard|default(False) and dashboard_version is defined
