@@ -22,7 +22,7 @@
     line: '#\1'
     backrefs: yes
   tags: iscsiroot,netroot
-  when: is_raspbian
+#  when: is_raspbian
 
 - name: "enable iscsi service"
   become: yes
@@ -33,11 +33,29 @@
     state: "{{'restarted' if (iscsi_iser is defined and iscsi_iser.changed) else 'started'}}"
   tags: iscsiroot,netroot
 
-- name: 'reboot after setting up iscsi service'
-  become: yes
-  reboot:
-  when: iscsi_install.changed or iscsi_iser.changed or iscsi_service.changed
-  tags: iscsiroot,netroot,reboot
+#- name: "comment out iscsi default node manual startup"
+#  become: yes
+#  lineinfile:
+#    path: /etc/iscsi/iscsid.conf
+#    regexp: "^(\\s*node.startup\\s*=\\s*manual.*)"
+#    line: '#\1'
+#    backrefs: yes
+#  tags: iscsiroot,netroot
+#
+#- name: "set iscsi default node startup to automatic"
+#  become: yes
+#  lineinfile:
+#    path: /etc/iscsi/iscsid.conf
+#    regexp: "^\\s*node.startup\\s*=\\s*automatic.*"
+#    insertafter: "^#*\\s*node.startup\\s*=\\s*manual.*"
+#    line: 'node.startup = automatic'
+#  tags: iscsiroot,netroot
+#
+#- name: 'reboot after setting up iscsi service'
+#  become: yes
+#  reboot:
+#  when: iscsi_install.changed or iscsi_iser.changed or iscsi_service.changed
+#  tags: iscsiroot,netroot,reboot
 
 - name: "check for existing iscsi root"
   set_fact:
@@ -47,12 +65,21 @@
   when: "item.mount=='/' and 'ext4' in item.fstype and '/dev/sd' in item.device"
   tags: iscsiroot,netroot
 
+- name: "run iscsi discovery"
+  register: iscsimount
+  become: yes
+  open_iscsi:
+    discover: yes
+    portal: "{{ iscsi_root_ip }}"
+    port: "{{ iscsi_root_port | default('3260') }}"
+  when: iscsi_root_found is not defined
+  tags: iscsiroot,netroot
+
 - name: "mount iscsi lun"
   register: iscsimount
   become: yes
   open_iscsi:
     auto_node_startup: yes
-    discover: yes
     login: yes
     portal: "{{ iscsi_root_ip }}"
     port: "{{ iscsi_root_port | default('3260') }}"
@@ -138,7 +165,7 @@
       become: yes
       lineinfile:
         path: "{{ iscsitemp.path}}/etc/fstab"
-        regexp: "{{ '^((LABEL=writable  / .*)$)' if (is_ubuntu) else '^((PARTUUID=[0-9a-zA-Z-]*  / .*)$)' }}"
+        regexp: "{{ '^((LABEL=writable\\s+/\\s+.*)$)' if (is_ubuntu) else '^((PARTUUID=[0-9a-zA-Z-]*\\s+/\\s+.*)$)' }}"
         line: '#\1'
         backrefs: yes
 
@@ -146,7 +173,7 @@
       become: yes
       lineinfile:
         path: "{{ iscsitemp.path }}/etc/fstab"
-        regexp: "^UUID={{ iscsi_uuid.stdout }} */ *ext4 *{{ '_netdev' if (is_ubuntu) else 'defaults' }} *{{ '0' if (is_ubuntu) else '1' }} *{{ '0' if (is_ubuntu) else '1' }}$"
+        regexp: "^UUID={{ iscsi_uuid.stdout }}\\s+/\\s+ext4\\s+{{ '_netdev' if (is_ubuntu) else 'defaults' }}\\s+{{ '0' if (is_ubuntu) else '1' }}\\s+{{ '0' if (is_ubuntu) else '1' }}\\s*$"
         line: "UUID={{ iscsi_uuid.stdout }}       /       ext4    {{ '_netdev' if (is_ubuntu) else 'defaults' }}        {{ '0' if (is_ubuntu) else '1' }}       {{ '0' if (is_ubuntu) else '1' }}"
 
   always:
@@ -154,7 +181,7 @@
       become: yes
       lineinfile:
         path: "{{ iscsitemp.path }}/etc/fstab"
-        regexp: "^{{ iscsi_device }} *{{ iscsitemp.path }} *ext4.*$"
+        regexp: "^{{ iscsi_device }}\\s*{{ iscsitemp.path }}\\s*ext4.*$"
         state: absent
       when: iscsimount is defined and not iscsimount.failed
 
@@ -214,6 +241,16 @@
   when: iscsi_root_found is not defined
   tags: iscsiroot,netroot
 
+- block:
+    - name: 'retrieve kernel version'
+      register: uname_result
+      command: "uname -r"
+    - name: 'set ansible_kernel fact'
+      set_fact:
+        ansible_kernel: "{{ uname_result.stdout }}"
+  when: iscsi_root_found is not defined
+  tags: iscsiroot,netroot
+  
 - name: 'make initramfs'
   become: yes
   register: initramfs
@@ -228,10 +265,11 @@
   command: "mv -f /boot/initrd.img-{{ ansible_kernel }} /boot/firmware/initrd.img-{{ ansible_kernel }}"
   args:
     removes: "/boot/initrd.img-{{ ansible_kernel }}"
+    creates: "/boot/firmware/initrd.img-{{ ansible_kernel }}"
   when: is_ubuntu
   tags: iscsiroot,netroot
 
-- name: "remove old ubunut initrd"
+- name: "remove old ubuntu initrd"
   become: yes
   file:
     path: /boot/firmware/initrd.img
@@ -294,8 +332,7 @@
     dest: "{{ cmdline_txt_path }}"
     remote_src: yes
     force: yes
-  tags: iscsiroot,netroot
-  when: iscsi_root_dontinstall is not defined
+  tags: iscsiroot,netroot,iscsiroot_install
 
 - name: 'copy config.txt.iscsi to config.txt'
   become: yes
@@ -305,12 +342,11 @@
     dest: "{{ config_txt_path }}"
     remote_src: yes
     force: yes
-  tags: iscsiroot,netroot
-  when: iscsi_root_dontinstall is not defined
+  tags: iscsiroot,netroot,iscsiroot_install
 
 - name: 'reboot after setting up iscsi root'
   become: yes
   reboot:
-  when: iscsi_root_dontinstall is not defined and ((iscsi_root_found is not defined and not rsync.failed) or cmdlinecopy.changed or configcopy.changed)
-  tags: iscsiroot,netroot,reboot
+  tags: iscsiroot,netroot,reboot,iscsiroot_install
+  when: ((iscsi_root_found is not defined and not rsync.failed) or cmdlinecopy.changed or configcopy.changed)
 

@@ -1,0 +1,50 @@
+#! /bin/bash
+
+name=`basename $0`
+stdout_log="/var/log/$name.log"
+stderr_log="/var/log/$name.err"
+led0char=${name: -2:-1}
+led1char=${name: -1}
+scriptType=${name: 1}
+
+get_command_from_char () {
+case "$1" in
+  0)
+  echo "none"
+  ;;
+  1)
+  echo "default-on"
+  ;;
+  f)
+  echo "heartbeat"
+  ;;
+  *)
+  echo "none"
+  ;;
+esac
+}
+
+case "$1" in
+    start|stop|restart)
+    echo "$0 $1" >> $stdout_log
+    led0command=$(get_command_from_char ${led0char})
+    led1command=$(get_command_from_char ${led1char})
+    echo "  led0=${led0char}=${led0command}" >> $stdout_log
+    echo "  led1=${led1char}=${led1command}" >> $stdout_log
+
+    echo ${led0command} >> /sys/class/leds/led0/trigger
+    echo ${led1command} >> /sys/class/leds/led1/trigger
+    ;;
+    status)
+    if [ "$scriptType" -eq "S" ]
+    then
+        exit 1
+    fi
+    ;;
+    *)
+    echo "Usage: $0 {start|stop|restart|status}"
+    exit 1
+    ;;
+esac
+
+exit 0

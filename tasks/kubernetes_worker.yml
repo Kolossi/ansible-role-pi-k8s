@@ -27,8 +27,16 @@
 
 - name: 'join cluster'
   when: inventory_hostname in groups['k8sworkers'] and node_check_result.rc != 0
+  register: node_join_result
   become: yes
   command: "kubeadm join {{ hostvars[groups['k8smasters'][0]]['ansible_default_ipv4']['address']}}:6443 --token {{ hostvars[groups['k8smasters'][0]]['token_result']['stdout'] }} --discovery-token-ca-cert-hash sha256:{{ hostvars[groups['k8smasters'][0]]['token_sha_result']['stdout'] }}"
+
+- name: 'pause 2 mins for kubernetes workers to begin start up'
+  run_once: yes
+  when: inventory_hostname == groups['k8smasters'][0] and node_join_result is defined and node_join_result.changed
+  wait_for:
+    timeout: 120
+  delegate_to: localhost
 
 - name: 'wait for all nodes to come up'
   when: inventory_hostname == groups['k8smasters'][0]

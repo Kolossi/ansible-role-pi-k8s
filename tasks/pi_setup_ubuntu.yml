@@ -22,6 +22,14 @@
     state: absent
   tags: pi_setup
 
+- name: 'uninstall ubuntu-release-upgrader-core'
+  become: yes
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    name: 'ubuntu-release-upgrader-core'
+    state: absent
+  tags: pi_setup
+
 - name: 'install nfs-common'
   become: yes
   apt:
@@ -105,6 +113,7 @@
   register: ntp_server_result
   tags: pi_setup
 
-- include_tasks: 'kernel_version_ubuntu.yml'
+- name: "include kernel_version_ubuntu.yml"
+  include_tasks: 'kernel_version_ubuntu.yml'
   when: kernel_version is defined
   tags: pi_setup,get_kernel_version,kernel_version

@@ -3,17 +3,25 @@
 - import_tasks: process_facts.yml
   tags: always
 
-- include_tasks: "pi_setup_{{ os_name }}.yml"
+- name: "include pi_setup_{{ os_name }}.yml"
+  include_tasks: pi_setup_{{ os_name }}.yml
   tags: pi_setup
 
 - import_tasks: pi_setup.yml
   tags: pi_setup,kernel_version,get_kernel_version
 
-- include_tasks: "nfsroot.yml"
+- name: "include pi_trafficlight_leds.yml"
+  include_tasks: pi_trafficlight_leds.yml
+  tags: trafficlight_leds
+  when: trafficlight_leds|default(False)
+  
+- name: "include nfsroot.yml"
+  include_tasks: nfsroot.yml
   tags: netroot, nfsroot
   when: nfs_root_source is defined
 
-- include_tasks: "iscsiroot.yml"
+- name: "include iscsiroot.yml"
+  include_tasks: iscsiroot.yml
   tags: netroot, iscsiroot
   when: iscsi_root_iqn is defined
 
@@ -29,17 +37,20 @@
 - import_tasks: kubernetes_master.yml
   tags: kubernetes,kubernetes_master
 
-- include_tasks: "cni_{{ 'flannel' if (flannel_version is defined) else 'weave' }}.yml"
+- name: "include cni_{{ 'flannel' if (flannel_version is defined) else 'weave' }}.yml"
+  include_tasks: cni_{{ 'flannel' if (flannel_version is defined) else 'weave' }}.yml
   tags: cni,flannel,weave
 
 - import_tasks: kubernetes_worker.yml
   tags: kubernetes,kubernetes_worker
 
-- include_tasks: ingress_nginx.yml
+- name: "include ingress_nginx.yml"
+  include_tasks: ingress_nginx.yml
   tags: ingress,nginx
   when: nginx_ingress_version is defined
 
-- include_tasks: "dashboard.yml"
+- name: "include dashboard.yml"
+  include_tasks: dashboard.yml
   tags: dashboard
   when: install_dashboard|default(False) and dashboard_version is defined
 

@@ -1,0 +1,67 @@
+---
+
+- name: "Copy leds utility script"
+  become: yes
+  copy:
+    src: "files/pi-leds"
+    dest: "/etc/init.d/pi-leds"
+    mode: "755"
+  tags: trafficlight_leds
+
+- name: "Set runlevel 0,6 start to green on, red flashing"
+  become: yes
+  file:
+    src: "../init.d/pi-leds"
+    dest: "/etc/rc{{ item }}.d/K00pi-leds_1f"
+    state: link
+  loop:
+    - 0
+    - 6
+  tags: trafficlight_leds
+
+- name: "Set runlevel 0,6 end to green off, red flashing"
+  become: yes
+  file:
+    src: "../init.d/pi-leds"
+    dest: "/etc/rc{{ item }}.d/K99pi-leds_0f"
+    state: link
+  loop:
+    - 0
+    - 6
+  tags: trafficlight_leds
+
+- name: "Set runlevel 3,4,5 start to green flash, red off"
+  become: yes
+  file:
+    src: "../init.d/pi-leds"
+    dest: "/etc/rc{{ item }}.d/S00pi-leds_f0"
+    state: link
+  loop:
+    - 3
+    - 4
+    - 5
+  tags: trafficlight_leds
+
+- name: "Set runlevel 3,4,5 end to green on, red off"
+  become: yes
+  file:
+    src: "../init.d/pi-leds"
+    dest: "/etc/rc{{ item }}.d/S99pi-leds_10"
+    state: link
+  loop:
+    - 3
+    - 4
+    - 5
+  tags: trafficlight_leds
+
+- name: "Set runlevel 1,2 start to green flash, red flash"
+  become: yes
+  file:
+    src: "../init.d/pi-leds"
+    dest: "/etc/rc{{ item }}.d/S00pi-leds_ff"
+    state: link
+  loop:
+    - 1
+    - 2
+  tags: trafficlight_leds
+

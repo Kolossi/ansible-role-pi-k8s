@@ -17,26 +17,6 @@
       become: yes
       command: apt-mark hold flash-kernel
       when: '"flash-kernel" not in held_packages.stdout'
-
-#    - name: hold initramfs-tools
-#      become: yes
-#      command: apt-mark hold initramfs-tools
-#      when: '"initramfs-tools" not in held_packages.stdout'
-#
-#    - name: 'hold linux-raspi2'
-#      become: yes
-#      command: apt-mark hold linux-raspi2
-#      when: '"linux-raspi2" not in held_packages.stdout'
-#
-#    - name: 'hold linux-image-raspi2'
-#      become: yes
-#      command: apt-mark hold linux-image-raspi2
-#      when: '"linux-image-raspi2" not in held_packages.stdout'
-#
-#    - name: 'hold linux-headers-raspi2'
-#      become: yes
-#      command: apt-mark hold linux-headers-raspi2
-#      when: '"linux-headers-raspi2" not in held_packages.stdout'
   when: is_ubuntu
 
 - name: 'Upgrade all packages to the latest version'
@@ -57,11 +37,13 @@
     autoremove: yes
 
 # for ubuntu, this will have been performed earlier to support iscsi
-- include_tasks: 'kernel_version_raspbian.yml'
+- name: "include kernel_version_raspbian.yml"
+  include_tasks: 'kernel_version_raspbian.yml'
   when: kernel_version is defined and is_raspbian
   tags: kernelversion
 
 - debug:
+    verbosity: 3
     msg:
       - "%upgrade_result.changed%: {{ upgrade_result.changed }}"
       - "%autoremove_result.changed%: {{ autoremove_result.changed }}"
