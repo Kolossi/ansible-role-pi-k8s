@@ -1,50 +1,49 @@
 #! /bin/bash
 
+### BEGIN INIT INFO
+# Provides:          pi-leds
+# Required-Start:    uuidd
+# Required-Stop:     uuidd 
+# Default-Start:     1 2 3 4 5
+# Default-Stop:      0 6
+# Short-Description: Change raspberry pi leds
+# Description:       Use green on/red off for running and
+#                    green off/red flashing for shutting down
+### END INIT INFO
+
+set -e
+
 name=`basename $0`
-stdout_log="/var/log/$name.log"
-stderr_log="/var/log/$name.err"
-led0char=${name: -2:-1}
-led1char=${name: -1}
-scriptType=${name: 1}
+stdout_log="/var/log/pi-leds.log"
 
-get_command_from_char () {
+echo "$0 $*" >> $stdout_log
+echo "-----" >> $stdout_log
 case "$1" in
-  0)
-  echo "none"
-  ;;
-  1)
-  echo "default-on"
-  ;;
-  f)
-  echo "heartbeat"
-  ;;
-  *)
-  echo "none"
-  ;;
-esac
-}
-
-case "$1" in
-    start|stop|restart)
-    echo "$0 $1" >> $stdout_log
-    led0command=$(get_command_from_char ${led0char})
-    led1command=$(get_command_from_char ${led1char})
-    echo "  led0=${led0char}=${led0command}" >> $stdout_log
-    echo "  led1=${led1char}=${led1command}" >> $stdout_log
-
+    start|restart)
+    led0command='default-on'
+    led1command='none'
+    echo "  led0=${led0command}" >> $stdout_log
+    echo "  led1=${led1command}" >> $stdout_log
+    echo ${led0command} >> /sys/class/leds/led0/trigger
+    echo ${led1command} >> /sys/class/leds/led1/trigger
+    ;;
+    stop)
+    led0command='none'
+    led1command='heartbeat'
+    echo "  led0=${led0command}" >> $stdout_log
+    echo "  led1=${led1command}" >> $stdout_log
     echo ${led0command} >> /sys/class/leds/led0/trigger
     echo ${led1command} >> /sys/class/leds/led1/trigger
     ;;
     status)
-    if [ "$scriptType" -eq "S" ]
-    then
-        exit 1
-    fi
+    # do nothing
     ;;
     *)
     echo "Usage: $0 {start|stop|restart|status}"
+    echo "  exit 1" >> $stdout_log
     exit 1
     ;;
 esac
 
+echo "  exit 0" >> $stdout_log
 exit 0
