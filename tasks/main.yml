@@ -37,8 +37,8 @@
 - import_tasks: kubernetes_master.yml
   tags: kubernetes,kubernetes_master
 
-- name: "include cni_{{ 'flannel' if (flannel_version is defined) else 'weave' }}.yml"
-  include_tasks: cni_{{ 'flannel' if (flannel_version is defined) else 'weave' }}.yml
+- name: "include cni_{{ cni_name }}.yml"
+  include_tasks: cni_{{ cni_name }}.yml
   tags: cni,flannel,weave
 
 - import_tasks: kubernetes_worker.yml

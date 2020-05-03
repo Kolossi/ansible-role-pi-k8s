@@ -22,7 +22,7 @@
   # cidr required for flannel, see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
   # maybe see also https://blog.hypriot.com/post/setup-kubernetes-raspberry-pi-cluster/
   shell:
-    cmd: "kubeadm init --token-ttl=0 {{ '--pod-network-cidr=10.244.0.0/16' if (flannel_version is defined) else '' }}"
+    cmd: "kubeadm init --token-ttl=0 {{ '--pod-network-cidr=10.244.0.0/16' if (flannel_version is defined) else '--pod-network-cidr='+pod_network_cidr else '' }}"
     creates: /etc/kubernetes/manifests/kube-apiserver.yaml
 
 - name: 'create kube config'

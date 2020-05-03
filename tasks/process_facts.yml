@@ -23,3 +23,7 @@
 - name: "get cmdline.txt path"
   set_fact:
     cmdline_txt_path: "{{ boot_path }}/cmdline.txt"
+
+- name: "get cni name"
+  set_fact:
+    cni_name: "{{ 'calico' if (calico_version is defined) else 'flannel' if (flannel_version is defined) else 'weave' }}"

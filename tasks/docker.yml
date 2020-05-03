@@ -39,6 +39,7 @@
     state: present
     update_cache: yes
 
+# for versions, see https://kubernetes.io/docs/setup/production-environment/container-runtimes/#tab-cri-docker-installation-0
 - name: 'install docker'
   become: yes
   register: install_docker_result
