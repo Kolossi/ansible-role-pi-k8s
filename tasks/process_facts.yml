@@ -20,9 +20,15 @@
   set_fact:
     config_txt_path: "{{ boot_path }}/config.txt"
 
+- name: 'get cmdline filename'
+  shell: "grep ^[^#]*cmdline {{ config_txt_path }} | cut -d= -f2"
+  register: cmdline_txt_name
+  changed_when: false
+  failed_when: false
+
 - name: "get cmdline.txt path"
   set_fact:
-    cmdline_txt_path: "{{ boot_path }}/cmdline.txt"
+    cmdline_txt_path: "{{ boot_path }}/{{ cmdline_txt_name.stdout|default('cmdline.txt',true) }}"
 
 - name: "get cni name"
   set_fact:

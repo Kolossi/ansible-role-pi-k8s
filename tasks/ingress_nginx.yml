@@ -12,7 +12,7 @@
   any_errors_fatal: yes
   shell:
     cmd: |
-        curl -fsSL https://raw.githubusercontent.com/kubernetes/ingress-nginx/nginx-{{ nginx_ingress_version }}/deploy/static/mandatory.yaml |
+        curl -fsSL https://raw.githubusercontent.com/kubernetes/ingress-nginx/nginx-{{ nginx_ingress_version }}/deploy/static/baremetal/deploy.yaml |
         sed -E "s|(image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller)(:{{ nginx_ingress_version }})|\1-arm{{ '64' if is_ubuntu else '' }}\2|g" |
         kubectl apply -f -
   args:
@@ -33,9 +33,9 @@
   any_errors_fatal: yes
   shell:
     cmd: |
-        curl -fsSL https://raw.githubusercontent.com/kubernetes/ingress-nginx/nginx-{{ nginx_ingress_version }}/deploy/static/provider/baremetal/service-nodeport.yaml |
-        sed -E "s|^( *)(targetPort: *80)|\1\2\n\1nodePort: {{ ingress_http_nodeport | default('31000') }} |" |
-        sed -E "s|^( *)(targetPort: *443)|\1\2\n\1nodePort: {{ ingress_https_nodeport | default('31001') }}|" |
+        curl -fsSL https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-{{ nginx_ingress_version }}/deploy/static/provider/baremetal/deploy.yaml |
+        sed -E "s|^( *)(targetPort: *http *$)|\1\2\n\1nodePort: {{ ingress_http_nodeport | default('31000') }} |" |
+        sed -E "s|^( *)(targetPort: *https)|\1\2\n\1nodePort: {{ ingress_https_nodeport | default('31001') }}|" |
         kubectl apply -f -
   args:
     warn: no

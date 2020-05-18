@@ -89,7 +89,6 @@
       or (kernel_lib_extract is defined and kernel_lib_extract.changed)
       or (kernel_boot is defined and kernel_boot_extract.changed)
       or (config_kernel is defined and config_kernel.changed)
-      or (ntp_server_result is defined and ntp_server_result.changed)
   become: yes
   reboot:
   tags: reboot

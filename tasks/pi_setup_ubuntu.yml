@@ -110,7 +110,16 @@
               
     insertafter: '\[Time\]'
     state: present
-  register: ntp_server_result
+  register: ntp_service_result
+  tags: pi_setup
+
+- name: 'systemctl restart ntp'
+  become: yes
+  when: ntp_service_result.changed
+  systemd:
+    state: restarted
+    name: systemd-timesyncd
+    daemon_reload: yes
   tags: pi_setup
 
 - name: "include kernel_version_ubuntu.yml"

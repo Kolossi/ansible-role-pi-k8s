@@ -33,12 +33,14 @@
 
 - name: 'pause 2 mins for kubernetes workers to begin start up'
   run_once: yes
-  when: inventory_hostname == groups['k8smasters'][0] and node_join_result is defined and node_join_result.changed
+  when: inventory_hostname in groups['k8sworkers'] and node_join_result is defined and node_join_result.changed
   wait_for:
     timeout: 120
   delegate_to: localhost
 
-- name: 'wait for all nodes to come up'
-  when: inventory_hostname == groups['k8smasters'][0]
-  command: 'kubectl wait --for=condition=ready nodes --all'
+- name: 'wait up to another 2 mins for all nodes to come up'
+  run_once: yes
+  when: inventory_hostname in groups['k8sworkers']
+  command: 'kubectl wait --for=condition=ready --timeout=120s nodes --all'
+  delegate_to: groups['k8smasters'][0]
 

@@ -9,17 +9,24 @@
   ignore_errors: true
   tags: cni,calico
 
-- name: 'check for explicit pod_cidr_network'
-  fail:
-    msg: "pod_cidr_network must be defined for calico install"
-  when: pod_cidr_network is not defined
+#- name: 'check for explicit pod_cidr_network'
+#  fail:
+#    msg: "pod_cidr_network must be defined for calico install"
+#  when: pod_cidr_network is not defined
+#  tags: cni,calico
 
+#- name: 'process pod_cidr_network'
+#  set_fact:
+#    escaped_pod_cidr_network: '{{ pod_cidr_network | replace("/","\/") }}'
+#  tags: cni,calico
+    
 - name: 'install calico'
   when: inventory_hostname in groups['k8smasters'] and calico_version is defined and cni_check_result.rc != 0
   any_errors_fatal: yes
   # see latest version in https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-0
   shell:
-    cmd: 'curl -fsSL https://docs.projectcalico.org/{{ calico_version }}/manifests/calico.yaml | sed "s/192\.168\.0\.0\/16/{{ pod_network_cidr }}/g" | kubectl apply -f -'
+    #cmd: 'curl -fsSL https://docs.projectcalico.org/{{ calico_version }}/manifests/calico.yaml | sed "s/192\.168\.0\.0\/16/{{ escaped_pod_cidr_network }}/g" | kubectl apply -f -'
+    cmd: 'curl -fsSL https://docs.projectcalico.org/{{ calico_version }}/manifests/calico-etcd.yaml | kubectl apply -f -'
   args:
    warn: no
   tags: cni,calico
