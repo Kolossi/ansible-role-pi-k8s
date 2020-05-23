@@ -12,7 +12,7 @@
   any_errors_fatal: yes
   shell:
     cmd: |
-        curl -fsSL https://raw.githubusercontent.com/kubernetes/ingress-nginx/nginx-{{ nginx_ingress_version }}/deploy/static/baremetal/deploy.yaml |
+        curl -fsSL https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-{{ nginx_ingress_version }}/deploy/static/provider/baremetal/deploy.yaml |
         sed -E "s|(image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller)(:{{ nginx_ingress_version }})|\1-arm{{ '64' if is_ubuntu else '' }}\2|g" |
         kubectl apply -f -
   args:
