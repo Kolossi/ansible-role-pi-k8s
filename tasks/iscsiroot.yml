@@ -26,10 +26,17 @@
 
 - name: "enable iscsi service"
   become: yes
-  register: iscsi_service
+  register: iscsi_service_enabled
   systemd:
     name: "{{ 'open-iscsi.service' if (is_ubuntu) else 'iscsi.service' }}"
     enabled: yes
+  tags: iscsiroot,netroot
+
+- name: "start iscsi service"
+  become: yes
+  register: iscsi_service_start
+  systemd:
+    name: "{{ 'open-iscsi.service' if (is_ubuntu) else 'iscsi.service' }}"
     state: "{{'restarted' if (iscsi_iser is defined and iscsi_iser.changed) else 'started'}}"
   tags: iscsiroot,netroot
 
@@ -51,11 +58,11 @@
 #    line: 'node.startup = automatic'
 #  tags: iscsiroot,netroot
 #
-#- name: 'reboot after setting up iscsi service'
-#  become: yes
-#  reboot:
-#  when: iscsi_install.changed or iscsi_iser.changed or iscsi_service.changed
-#  tags: iscsiroot,netroot,reboot
+- name: 'reboot after setting up iscsi service'
+  become: yes
+  reboot:
+  when: iscsi_install.changed or iscsi_iser.changed or iscsi_service_enabled.changed or iscsi_service_start.changed
+  tags: iscsiroot,netroot,reboot
 
 - name: "check for existing iscsi root"
   set_fact:

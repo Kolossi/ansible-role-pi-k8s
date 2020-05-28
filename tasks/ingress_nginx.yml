@@ -13,29 +13,8 @@
   shell:
     cmd: |
         curl -fsSL https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-{{ nginx_ingress_version }}/deploy/static/provider/baremetal/deploy.yaml |
-        sed -E "s|(image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller)(:{{ nginx_ingress_version }})|\1-arm{{ '64' if is_ubuntu else '' }}\2|g" |
-        kubectl apply -f -
-  args:
-    warn: no
-  tags: ingress,nginx
-
-- name: 'check for nginx baremetal nodeport service'
-  when: inventory_hostname in groups['k8smasters']
-  register: nodeport_check_result
-  shell: "kubectl get service -n ingress-nginx | grep 'ingress-nginx'"
-  changed_when: false
-  failed_when: nodeport_check_result.rc != 0 and nodeport_check_result.rc != 1
-  ignore_errors: true
-  tags: ingress,nginx
-
-- name: 'install nginx baremetal nodeport service'
-  when: inventory_hostname in groups['k8smasters'] and nginx_ingress_version is defined and nodeport_check_result.rc != 0
-  any_errors_fatal: yes
-  shell:
-    cmd: |
-        curl -fsSL https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-{{ nginx_ingress_version }}/deploy/static/provider/baremetal/deploy.yaml |
-        sed -E "s|^( *)(targetPort: *http *$)|\1\2\n\1nodePort: {{ ingress_http_nodeport | default('31000') }} |" |
-        sed -E "s|^( *)(targetPort: *https)|\1\2\n\1nodePort: {{ ingress_https_nodeport | default('31001') }}|" |
+        sed -E "s;^( *)(targetPort: *http *$);\1\2\n\1nodePort: {{ ingress_http_nodeport | default('31000') }} ;" |
+        sed -E "s;^( *)(targetPort: *https);\1\2\n\1nodePort: {{ ingress_https_nodeport | default('31001') }} ;" |
         kubectl apply -f -
   args:
     warn: no
