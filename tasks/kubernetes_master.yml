@@ -39,9 +39,32 @@
     src: "{{ ansible_env.HOME }}/.kube/config"
     dest: "{{ local_kubeconfig_filename }}"
     flat: yes
+
+- name: 'update kubeconfig cluster name'
+  when: inventory_hostname in groups['k8smasters'] and kubeconfig_context_name is defined
+  run_once: yes
+  replace:
+    path: "{{ local_kubeconfig_filename }}"
+    after: 'clusters:'
+    regexp: '^(.*name: )kubernetes$'
+    replace: '\1{{ kubeconfig_context_name }}'
+    before: 'contexts:'
+  delegate_to: localhost
+  
+- name: 'update kubeconfig context name'
+  when: inventory_hostname in groups['k8smasters'] and kubeconfig_context_name is defined
+  run_once: yes
+  replace:
+    path: "{{ local_kubeconfig_filename }}"
+    after: 'contexts:'
+    regexp: '^(.*cluster: )kubernetes$'
+    replace: '\1{{ kubeconfig_context_name }}'
+    before: 'current-context:'
+  delegate_to: localhost
   
 - name: 'pause 2 mins for kubernetes master to begin start up'
   when: inventory_hostname == groups['k8smasters'][0] and kubeadm_result.changed
+  run_once: yes
   wait_for:
     timeout: 120
   delegate_to: localhost
