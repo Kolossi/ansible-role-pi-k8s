@@ -73,6 +73,21 @@
   when: inventory_hostname == groups['k8smasters'][0] and kubeadm_result.changed
   command: "kubectl wait --for=condition=ready pods -n kube-system --selector='k8s-app!=kube-dns'"
 
+- name: 'create high priority class'
+  when: inventory_hostname == groups['k8smasters'][0] and create_high_priority_class is defined
+  shell:
+    cmd: |
+      cat <<EOF | kubectl apply -f -
+      apiVersion: scheduling.k8s.io/v1
+      kind: PriorityClass
+      metadata:
+        name: high-priority
+      value: 1000000
+      globalDefault: false
+      description: "This priority class should be used for pods which need to preempt during scheduling."
+      EOF
+  run_once: yes
+
 ## following believed no longer necessary
 ## https://stackoverflow.com/a/52335566/2738122
 ## (seems to be allow scheduling ON master)
