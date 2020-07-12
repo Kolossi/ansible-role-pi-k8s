@@ -30,12 +30,35 @@
     state: absent
   tags: pi_setup
 
+- name: "set ntp server"
+  when: ntp_servers is defined
+  become: yes
+  lineinfile:
+    path: "/etc/systemd/timesyncd.conf"
+    line: "NTP={{ ntp_servers }}"
+    regexp: '^\s*#?\s*(NTP=).*$'
+    insertafter: '\[Time\]'
+    state: present
+  register: ntp_service_result
+  tags: pi_setup
+
+- name: 'systemctl restart ntp'
+  become: yes
+  when: ntp_service_result.changed
+  systemd:
+    state: restarted
+    name: systemd-timesyncd
+    daemon_reload: yes
+  tags: pi_setup
+
 - name: 'install nfs-common'
   become: yes
   apt:
     force_apt_get: yes # there's no need to use aptitude
     name: 'nfs-common'
     state: present
+    update_cache: yes
+    cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
   tags: pi_setup
 
 - name: 'clear unneeded initramfs'
@@ -98,28 +121,6 @@
     line: 'kernel=kernel8-p4.img'
     state: present
     create: no
-  tags: pi_setup
-
-- name: "set ntp server"
-  when: ntp_servers is defined
-  become: yes
-  lineinfile:
-    path: "/etc/systemd/timesyncd.conf"
-    line: "NTP={{ ntp_servers }}"
-    regexp: '^\s*#?\s*(NTP=).*$'
-              
-    insertafter: '\[Time\]'
-    state: present
-  register: ntp_service_result
-  tags: pi_setup
-
-- name: 'systemctl restart ntp'
-  become: yes
-  when: ntp_service_result.changed
-  systemd:
-    state: restarted
-    name: systemd-timesyncd
-    daemon_reload: yes
   tags: pi_setup
 
 - name: "include kernel_version_ubuntu.yml"
