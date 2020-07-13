@@ -123,7 +123,7 @@
   ## above switch to iptables legacy seems to break this despite it apprently being required according to
   ## https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-6
   #- name: 'setup iptables bridging'
-  #  when: inventory_hostname in groups['k8smasters']
+  #  when: inventory_hostname in target_masters
   #  become: yes
   #  sysctl:
   #    name: net.bridge.bridge-nf-call-iptables

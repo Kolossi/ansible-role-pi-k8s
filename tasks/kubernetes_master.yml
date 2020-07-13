@@ -1,7 +1,7 @@
 ---
 
 - name: 'check for k8s images'
-  when: inventory_hostname in groups['k8smasters']
+  when: inventory_hostname in target_masters
   register: image_check_result
   become: yes
   shell: "docker image ls k8s.gcr.io/kube-apiserver | grep k8s.gcr.io/kube-apiserver"
@@ -10,12 +10,12 @@
   ignore_errors: true
   
 - name: 'pull k8s images'
-  when: inventory_hostname in groups['k8smasters'] and image_check_result.rc != 0
+  when: inventory_hostname in target_masters and image_check_result.rc != 0
   become: yes
   command: "kubeadm config images pull"
 
 - name: 'kubeadm init'
-  when: inventory_hostname in groups['k8smasters']
+  when: inventory_hostname in target_masters
   register: kubeadm_result
   any_errors_fatal: yes
   become: yes
@@ -26,7 +26,7 @@
     creates: /etc/kubernetes/manifests/kube-apiserver.yaml
 
 - name: 'create kube config'
-  when: inventory_hostname in groups['k8smasters']
+  when: inventory_hostname in target_masters
   shell:
     cmd: "sudo cp -n /etc/kubernetes/admin.conf $HOME/.kube/config && sudo chown $(id -u):$(id -g) $HOME/.kube/config"
     creates: "{{ ansible_env.HOME }}/.kube/config"
@@ -34,14 +34,14 @@
     warn: no #we have to use actual sudo to reliably get the user and group id
 
 - name: 'retrieve kube config to local'
-  when: inventory_hostname in groups['k8smasters']
+  when: inventory_hostname in target_masters
   fetch:
     src: "{{ ansible_env.HOME }}/.kube/config"
     dest: "{{ local_kubeconfig_filename }}"
     flat: yes
 
 - name: 'update kubeconfig cluster name'
-  when: inventory_hostname in groups['k8smasters'] and kubeconfig_context_name is defined
+  when: inventory_hostname in target_masters and kubeconfig_context_name is defined
   run_once: yes
   replace:
     path: "{{ local_kubeconfig_filename }}"
@@ -52,7 +52,7 @@
   delegate_to: localhost
   
 - name: 'update kubeconfig context name'
-  when: inventory_hostname in groups['k8smasters'] and kubeconfig_context_name is defined
+  when: inventory_hostname in target_masters and kubeconfig_context_name is defined
   run_once: yes
   replace:
     path: "{{ local_kubeconfig_filename }}"
@@ -63,18 +63,18 @@
   delegate_to: localhost
   
 - name: 'pause 2 mins for kubernetes master to begin start up'
-  when: inventory_hostname == groups['k8smasters'][0] and kubeadm_result.changed
+  when: inventory_hostname == target_masters[0] and kubeadm_result.changed
   run_once: yes
   wait_for:
     timeout: 120
   delegate_to: localhost
   
 - name: 'wait for all control plane pods (except dns) to come up'
-  when: inventory_hostname == groups['k8smasters'][0] and kubeadm_result.changed
+  when: inventory_hostname == target_masters[0] and kubeadm_result.changed
   command: "kubectl wait --for=condition=ready pods -n kube-system --selector='k8s-app!=kube-dns'"
 
 - name: 'create high priority class'
-  when: inventory_hostname == groups['k8smasters'][0] and create_high_priority_class is defined
+  when: inventory_hostname == target_masters[0] and create_high_priority_class is defined
   shell:
     cmd: |
       cat <<EOF | kubectl apply -f -
@@ -86,12 +86,11 @@
       globalDefault: false
       description: "This priority class should be used for pods which need to preempt during scheduling."
       EOF
-  run_once: yes
 
 ## following believed no longer necessary
 ## https://stackoverflow.com/a/52335566/2738122
 ## (seems to be allow scheduling ON master)
 #- name: 'taint master'
-#  when: inventory_hostname == groups['k8smasters'][0]
+#  when: inventory_hostname == target_masters[0]
 #  command: kubectl taint nodes --all node-role.kubernetes.io/master-
 

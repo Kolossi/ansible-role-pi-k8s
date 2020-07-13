@@ -33,3 +33,11 @@
 - name: "get cni name"
   set_fact:
     cni_name: "{{ 'calico' if (calico_version is defined) else 'flannel' if (flannel_version is defined) else 'weave' }}"
+
+- name: "get target masters"
+  set_fact:
+    target_masters: "{{ groups['k8smasters'] | intersect(play_hosts) }}"
+
+- name: "get target workers"
+  set_fact:
+    target_workers: "{{ groups['k8sworkers'] | intersect(play_hosts) }}"

@@ -2,7 +2,7 @@
 
 # prevent any further nodes joining cluster
 - name: 'delete token'
-  when: inventory_hostname == groups['k8smasters'][0] and token_result.rc == 0 and token_result.stdout != 0
+  when: inventory_hostname == target_masters[0] and token_result.rc == 0 and token_result.stdout != 0
   command: "kubeadm token delete {{ token_result.stdout }}"
   tags: delete_token, never
 

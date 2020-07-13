@@ -1,5 +1,5 @@
 - name: 'check for nginx ingress'
-  when: inventory_hostname in groups['k8smasters']
+  when: inventory_hostname in target_masters
   register: ingress_check_result
   shell: "kubectl get pods -n ingress-nginx | grep 'nginx-ingress-controller'"
   changed_when: false
@@ -8,7 +8,7 @@
   tags: ingress,nginx
 
 - name: 'install nginx ingress'
-  when: inventory_hostname in groups['k8smasters'] and nginx_ingress_version is defined and ingress_check_result.rc != 0
+  when: inventory_hostname in target_masters and nginx_ingress_version is defined and ingress_check_result.rc != 0
   any_errors_fatal: yes
   shell:
     cmd: |

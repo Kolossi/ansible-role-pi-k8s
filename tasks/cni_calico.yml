@@ -1,7 +1,7 @@
 ---
 
 - name: 'check for cni'
-  when: inventory_hostname in groups['k8smasters']
+  when: inventory_hostname in target_masters
   register: cni_check_result
   shell: "kubectl get pods -n kube-system | grep 'calico'"
   changed_when: false
@@ -21,7 +21,7 @@
   tags: cni,calico
     
 - name: 'install calico'
-  when: inventory_hostname in groups['k8smasters'] and calico_version is defined and cni_check_result.rc != 0
+  when: inventory_hostname in target_masters and calico_version is defined and cni_check_result.rc != 0
   any_errors_fatal: yes
   # see latest version in https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-0
   shell:

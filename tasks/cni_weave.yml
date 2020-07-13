@@ -1,7 +1,7 @@
 ---
 
 - name: 'check for cni'
-  when: inventory_hostname in groups['k8smasters']
+  when: inventory_hostname in target_masters
   register: cni_check_result
   shell: "kubectl get pods -n kube-system | grep 'weave'"
   changed_when: false
@@ -17,7 +17,7 @@
 ##############################
 
 - name: 'install weave'
-  when: inventory_hostname in groups['k8smasters'] and cni_check_result.rc != 0
+  when: inventory_hostname in target_masters and cni_check_result.rc != 0
   any_errors_fatal: yes
   # see latest info at https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-10
   shell:
