@@ -41,8 +41,7 @@
     flat: yes
 
 - name: 'update kubeconfig cluster name'
-  when: inventory_hostname in target_masters and kubeconfig_context_name is defined
-  run_once: yes
+  when: inventory_hostname == target_masters[0] and kubeconfig_context_name is defined
   replace:
     path: "{{ local_kubeconfig_filename }}"
     after: 'clusters:'
@@ -52,8 +51,7 @@
   delegate_to: localhost
   
 - name: 'update kubeconfig context name'
-  when: inventory_hostname in target_masters and kubeconfig_context_name is defined
-  run_once: yes
+  when: inventory_hostname == target_masters[0] and kubeconfig_context_name is defined
   replace:
     path: "{{ local_kubeconfig_filename }}"
     after: 'contexts:'
@@ -64,7 +62,6 @@
   
 - name: 'pause 2 mins for kubernetes master to begin start up'
   when: inventory_hostname == target_masters[0] and kubeadm_result.changed
-  run_once: yes
   wait_for:
     timeout: 120
   delegate_to: localhost
