@@ -46,6 +46,6 @@
 
 - name: 'label node with memory'
   when: inventory_hostname in target_workers
-  command: 'kubectl label node {{ inventory_hostname }} kolossi/pi-mem-gb={{ "8" if ansible_memtotal_mb |int > 7000 else "4" if ansible_memtotal_mb | int > 3000 else "2" if ansible_memtotal_mb | int > 1500 else "1" }}'
+  command: 'kubectl label --overwrite node {{ inventory_hostname }} kolossi/pi-mem-gb={{ "8" if ansible_memtotal_mb |int > 7000 else "4" if ansible_memtotal_mb | int > 3000 else "2" if ansible_memtotal_mb | int > 1500 else "1" }}'
   delegate_to: "{{ target_masters[0] }}"
   

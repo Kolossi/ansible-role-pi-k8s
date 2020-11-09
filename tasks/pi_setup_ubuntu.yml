@@ -8,6 +8,10 @@
 
 - name: 'uninstall ubuntu flash-kernel'
   become: yes
+  register: apt_result
+  retries: 3
+  delay: 5
+  until: apt_result is not failed
   apt:
     force_apt_get: yes # there's no need to use aptitude
     name: 'flash-kernel'
@@ -16,6 +20,10 @@
 
 - name: 'uninstall unattended-upgrades'
   become: yes
+  register: apt_result
+  retries: 3
+  delay: 5
+  until: apt_result is not failed
   apt:
     force_apt_get: yes # there's no need to use aptitude
     name: 'unattended-upgrades'
@@ -24,6 +32,10 @@
 
 - name: 'uninstall ubuntu-release-upgrader-core'
   become: yes
+  register: apt_result
+  retries: 3
+  delay: 5
+  until: apt_result is not failed
   apt:
     force_apt_get: yes # there's no need to use aptitude
     name: 'ubuntu-release-upgrader-core'
@@ -53,6 +65,10 @@
 
 - name: 'install nfs-common'
   become: yes
+  register: apt_result
+  retries: 3
+  delay: 5
+  until: apt_result is not failed
   apt:
     force_apt_get: yes # there's no need to use aptitude
     name: 'nfs-common'
@@ -76,6 +92,7 @@
         - '/boot/firmware'
       patterns: '*-raspi2'
     register: kernel_files_to_clear
+    when: kernel_version is defined
     tags: pi_setup
 
   - name: 'remove old kernel files'
@@ -84,12 +101,17 @@
       path: "{{ item.path }}"
       state: absent
     with_items: "{{ kernel_files_to_clear.files }}"
+    when: kernel_version is defined
     tags: pi_setup
 
 # fix boot hang because of low entropy due to missing mouse
 # thanks: https://www.linuxquestions.org/questions/debian-26/debian-hangs-at-boot-with-random-crng-init-done-4175613405/#post5889997
 - name: "install haveged"
   become: yes
+  register: apt_result
+  retries: 3
+  delay: 5
+  until: apt_result is not failed
   apt:
     force_apt_get: yes # there's no need to use aptitude
     name: 'haveged'
@@ -111,6 +133,7 @@
     line: '#\1'
     backrefs: yes
     create: no
+  when: kernel_version is defined
   tags: pi_setup
 
 - name: 'add x64 kernel in config.txt'
@@ -121,6 +144,7 @@
     line: 'kernel=kernel8-p4.img'
     state: present
     create: no
+  when: kernel_version is defined
   tags: pi_setup
 
 - name: "include kernel_version_ubuntu.yml"

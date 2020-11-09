@@ -1,0 +1,101 @@
+---
+
+- name: 'install tgt'
+  become: yes
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    name: 'tgt'
+    state: present
+    update_cache: yes
+    cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
+  tags: master_ssd_workdir
+
+- import_tasks: iscsi_initiatorname.yml
+
+- name: "mount ssd device"
+  become: yes
+  mount:
+    path: "{{ master_ssd_mount_path }}"
+    src: "{{ master_ssd_device }}"
+    fstype: ext4
+    opts: default
+    state: mounted
+  when: inventory_hostname == target_masters[0]
+  tags: master_ssd_workdir
+
+- name: "make ssd blocks dir"
+  become: yes
+  file:
+    path: "{{ master_ssd_mount_path }}/blocks"
+    state: directory
+  when: inventory_hostname == target_masters[0]
+  tags: master_ssd_workdir
+
+- name: "make master workdir link"
+  become: yes
+  file:
+    src: "{{ master_ssd_mount_path }}/local_workdir"
+    dest: "{{ workdir_path }}"
+    state: link
+  when: inventory_hostname == target_masters[0]
+  tags: master_ssd_workdir
+
+- name: "make client workdir blocks file"
+  become: yes
+  register: blockfile_create
+  file:
+    path: "{{ master_ssd_mount_path }}/blocks/{{ inventory_hostname }}-workdir.img"
+    state: create
+  when: inventory_hostname != target_masters[0]
+  tags: master_ssd_workdir
+ 
+- name: "fill client workdir blocks file"
+  become: yes
+  command:
+    cmd: "dd if=/dev/zero of={{ blockfile_create.path }} bs=1M count={{ workdir_size_mb }} status=none"
+  when: inventory_hostname != target_masters[0] and blockfile_create.changed
+  tags: master_ssd_workdir
+
+- name: "create iscsi target config"
+  become: yes
+  register: workdir_target_create
+  template:
+    src: "workdir_target.conf.j2"
+    dest: "/etc/tgt/conf.d/{{ workdir_target | replace(':','.') }}"
+  delegate_to: target_masters[0]
+  when: inventory_hostname != target_masters[0]
+  tags: master_ssd_workdir
+
+- name: "request tgt restart"
+  set_fact:
+    restart_tgt: yes
+  delegate_to: target_masters[0]
+  when: inventory_hostname != target_masters[0] and (blockfile_create.changed or workdir_target_create.changed)
+  tags: master_ssd_workdir
+
+- name: "systemctl restart tgt"
+  become: yes
+  systemd:
+    state: restarted
+    name: tgt
+    daemon_reload: yes
+  when: inventory_hostname == target_masters[0] and restart_tgt
+  tags: master_ssd_workdir
+
+- name: 'store /tmp in workdir'
+  become: yes
+  file:
+    src: "{{ workdir_path }}/tmp"
+    path: /tmp
+    force: yes
+    state: link
+  tags: master_ssd_workdir
+
+- name: 'store /var/log in workdir'
+  become: yes
+  file:
+    src: "{{ workdir_path }}/log"
+    path: /var/log
+    force: yes
+    state: link
+  tags: master_ssd_workdir

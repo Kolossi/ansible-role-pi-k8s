@@ -22,7 +22,7 @@
     line: '#\1'
     backrefs: yes
   tags: iscsiroot,netroot
-#  when: is_raspbian
+  when: is_raspbian
 
 - name: "enable iscsi service"
   become: yes
@@ -31,6 +31,8 @@
     name: "{{ 'open-iscsi.service' if (is_ubuntu) else 'iscsi.service' }}"
     enabled: yes
   tags: iscsiroot,netroot
+
+- import_tasks: iscsi_initiatorname.yml
 
 - name: "start iscsi service"
   become: yes
@@ -252,6 +254,7 @@
     - name: 'retrieve kernel version'
       register: uname_result
       command: "uname -r"
+
     - name: 'set ansible_kernel fact'
       set_fact:
         ansible_kernel: "{{ uname_result.stdout }}"

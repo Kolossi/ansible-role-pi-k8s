@@ -25,6 +25,11 @@
   tags: netroot, iscsiroot
   when: iscsi_root_iqn is defined
 
+- name: "include master_ssd_workdir.yml"
+  include_tasks: master_ssd_workdir.yml
+  tags: master_ssd_workdir
+  when: master_ssd_device is defined and master_ssd_mount_path is defined
+
 - import_tasks: upgrade.yml
   tags: upgrade
 

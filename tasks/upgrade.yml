@@ -22,6 +22,9 @@
 - name: 'Upgrade all packages to the latest version'
   become: yes
   register: upgrade_result
+  retries: 3
+  delay: 5
+  until: upgrade_result is not failed
   apt:
     force_apt_get: yes # there's no need to use aptitude
     update_cache: yes
@@ -32,6 +35,9 @@
 - name: 'Remove dependencies that are no longer required'
   become: yes
   register: autoremove_result
+  retries: 3
+  delay: 5
+  until: autoremove_result is not failed
   apt:
     force_apt_get: yes # there's no need to use aptitude
     autoremove: yes

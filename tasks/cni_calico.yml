@@ -26,7 +26,8 @@
   # see latest version in https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#tabs-pod-install-0
   shell:
     #cmd: 'curl -fsSL https://docs.projectcalico.org/{{ calico_version }}/manifests/calico-etcd.yaml | sed "s/192\.168\.0\.0\/16/{{ escaped_pod_network_cidr }}/g" | kubectl apply -f -'
-    cmd: 'curl -fsSL https://docs.projectcalico.org/{{ calico_version }}/manifests/calico.yaml | sed "s/192\.168\.0\.0\/16/{{ escaped_pod_network_cidr }}/g" | kubectl apply -f -'
+    #cmd: 'curl -fsSL https://docs.projectcalico.org/{{ calico_version }}/manifests/calico.yaml | sed "s/192\.168\.0\.0\/16/{{ escaped_pod_network_cidr }}/g" | kubectl apply -f -'
+    cmd: 'curl -fsSL https://docs.projectcalico.org/archive/{{ calico_version }}/manifests/calico.yaml | sed "s/#   value: \"192\.168\.0\.0\/16\"/  value : {{ escaped_pod_network_cidr }}/g" | sed "s/# - name: CALICO_IPV4POOL_CIDR/- name: CALICO_IPV4POOL_CIDR/" | kubectl apply -f -'
   args:
    warn: no
   tags: cni,calico
