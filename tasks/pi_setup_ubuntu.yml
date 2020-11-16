@@ -77,11 +77,22 @@
     cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
   tags: pi_setup
 
+- name: 'check for existing initramfs'
+  become: yes
+  register: initramfs_check
+  find: 
+    paths: /boot/firmware
+    file_type: file
+    patterns: 'initrd*'
+    recurse: no
+  tags: pi_setup
+
 - name: 'clear unneeded initramfs'
   become: yes
   shell:
     cmd: 'update-initramfs -d -k all'
   tags: pi_setup
+  when: initramfs_check.matched > 2
 
 # thanks https://www.mydailytutorials.com/ansible-delete-multiple-files-directories-ansible/
 - block:

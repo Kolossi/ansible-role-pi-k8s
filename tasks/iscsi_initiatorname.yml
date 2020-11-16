@@ -4,7 +4,6 @@
   become: yes
   lineinfile:
     path: "/etc/iscsi/initiatorname.iscsi"
-    regexp: '^(InitiatorName=)'
-    line: '\1{{ iscsi_initiatorname | replace("{{ inventory_hostname }}",inventory_hostname) }}'
-    backrefs: yes
+    regexp: '^(InitiatorName|GenerateName)=.*'
+    line: 'InitiatorName={{ iscsi_initiatorname | replace("{{ inventory_hostname }}",inventory_hostname) }}'
   when: iscsi_initiatorname is defined

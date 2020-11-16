@@ -1,5 +1,5 @@
-<target {{ workdir_target }}>
-  backing-store {{ ssd_mount_path }}/blocks/{{ inventory_hostname }}-workdir.img
+<target {{ node_workdir_target }}>
+  backing-store {{ master_ssd_mount_path }}/blocks/{{ inventory_hostname }}-workdir.img
   initiator-name {{ iscsi_initiatorname }}
-  incominguser {{ workdir_user }} {{ workdir_pass }}
+  incominguser {{ node_workdir_user }} {{ node_workdir_pass }}
 </target>

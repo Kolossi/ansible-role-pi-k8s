@@ -33,6 +33,7 @@
   tags: iscsiroot,netroot
 
 - import_tasks: iscsi_initiatorname.yml
+  tags: iscsiroot,netroot
 
 - name: "start iscsi service"
   become: yes
