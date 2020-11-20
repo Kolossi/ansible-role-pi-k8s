@@ -95,7 +95,7 @@
   register: node_workdir_target_create
   template:
     src: "workdir_target.conf.j2"
-    dest: "/etc/tgt/conf.d/{{ node_workdir_target | replace(':','.') }}"
+    dest: "/etc/tgt/conf.d/{{ node_workdir_target | replace(':','.') }}.conf"
   delegate_to: "{{ target_masters[0] }}"
   when: inventory_hostname != target_masters[0]
   tags: master_ssd_workdir
