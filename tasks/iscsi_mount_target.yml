@@ -1,0 +1,101 @@
+---
+
+- name: "process vars"
+  set_fact:
+    # params:
+    iscsi_target_iqn:      '{{ iscsi_target_iqn | replace("{{ inventory_hostname }}",inventory_hostname) }}'
+    iscsi_target_ip:       '{{ iscsi_target_ip }}'
+    iscsi_target_username: '{{ iscsi_target_username | default("") | replace("{{ inventory_hostname }}",inventory_hostname) | regex_replace("[^a-zA-Z0-9]","") }}'
+    iscsi_target_password: '{{ iscsi_target_password | default("") }}'
+    iscsi_target_port:     '{{ iscsi_target_port | default("3260") }}'
+    iscsi_target_startup:  '{{ iscsi_target_startup | default("dontchange") }}'
+    # local vars:
+    iscsi_target_config: "/etc/iscsi/nodes/{{ iscsi_target_iqn }}/{{ iscsi_target_ip }},{{ iscsi_target_port }},1/default"
+
+- name: "run iscsi discovery"
+  register: iscsimount
+  become: yes
+  open_iscsi:
+    discover: yes
+    portal: "{{ iscsi_target_ip }}"
+    port: "{{ iscsi_target_port }}"
+
+- name: "update iscsi target startup"
+  become: yes
+  lineinfile:
+    path: "{{ iscsi_target_config }}"
+    regexp: '^(node.startup[ ]*=[ ]*).*'
+    line: '\1{{ iscsi_target_startup }}'
+    backrefs: yes
+  when: iscsi_target_startup != "dontchange"
+
+- name: "set iscsi target CHAP authmethod"
+  become: yes
+  lineinfile:
+    path: "{{ iscsi_target_config }}"
+    regexp: "^(node.session.auth.authmethod[ ]*=[ ]*).*"
+    line: '\1CHAP'
+    backrefs: yes
+  when: iscsi_target_username != "" or iscsi_target_password != ""
+
+- block:
+  - name: "insert iscsi target CHAP password if missing"
+    become: yes
+    lineinfile:
+      path: "{{ iscsi_target_config }}"
+      regexp: "^(node.session.auth.password[ ]*=[ ]*).*"
+      insertafter: '^node.session.auth.authmethod'
+      line: 'node.session.auth.password = {{ iscsi_target_password }}'
+
+  - name: "update iscsi target CHAP password"
+    become: yes
+    lineinfile:
+      path: "{{ iscsi_target_config }}"
+      regexp: "^(node.session.auth.password[ ]*=[ ]*).*"
+      line: '\1{{ iscsi_target_password }}'
+      backrefs: yes
+  when: iscsi_target_password != ""
+
+- block:
+  - name: "insert iscsi target CHAP username if missing"
+    become: yes
+    lineinfile:
+      path: "{{ iscsi_target_config }}"
+      regexp: "^(node.session.auth.username[ ]*=[ ]*).*"
+      insertafter: '^node.session.auth.authmethod'
+      line: 'node.session.auth.username = {{ iscsi_target_username }}'
+
+  - name: "update iscsi target CHAP user"
+    become: yes
+    lineinfile:
+      path: "{{ iscsi_target_config }}"
+      regexp: "^(node.session.auth.username[ ]*=[ ]*).*"
+      line: '\1{{ iscsi_target_username }}'
+      backrefs: yes
+  when: iscsi_target_username != ""
+
+- name: "connect iscsi lun"
+  register: iscsimount
+  become: yes
+  open_iscsi:
+    auto_node_startup: "{{ 'yes' if (iscsi_target_startup == 'automatic') else 'no' if (iscsi_target_startup == 'manual') else omit }}"
+    login: yes
+    portal: "{{ iscsi_target_ip }}"
+    port: "{{ iscsi_target_port }}"
+    target: '{{ iscsi_target_iqn }}'
+    node_user: '{{ iscsi_target_username }}'
+    node_pass: '{{ iscsi_target_password }}'
+
+- name: "find iscsi device"
+  set_fact:
+    iscsi_device: "{{ iscsimount.devicenodes[0] }}"
+
+- name: "find iscsi root file system uuid (include)"
+  include_tasks:
+    file: find_device_fs_uuid.yml
+  vars:
+    target_device: "{{ iscsi_device }}"
+
+- name: "set iscsi lun uuid"
+  set_fact:
+    iscsi_uuid: "{{ device_uuid }}"

@@ -1,5 +1,5 @@
-<target {{ node_workdir_target }}>
-  backing-store {{ master_ssd_mount_path }}/blocks/{{ inventory_hostname }}-workdir.img
+<target {{ node_workdir_iqn }}>
+  backing-store {{ ssd_server_mount_path }}/blocks/{{ inventory_hostname }}-workdir.img
   initiator-name {{ iscsi_initiatorname }}
-  incominguser {{ node_workdir_user }} {{ node_workdir_pass }}
+  incominguser {{ node_workdir_user | default("") | replace("{{ inventory_hostname }}",inventory_hostname) | regex_replace("[^a-zA-Z0-9]","") }} {{ node_workdir_pass | default("") }}
 </target>

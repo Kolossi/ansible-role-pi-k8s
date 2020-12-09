@@ -74,55 +74,87 @@
 
 - name: "install kernel"
   block:
-    - name: "extract kernel ./lib to target"
-      register: kernel_lib_extract
+    - name: "create temp untar dir"
       become: yes
-      unarchive:
-        remote_src: no
-        src: "{{ kernel_tar_path }}"
-        dest: "/"
-        exclude:
-        - "./boot"
+      tempfile:
+        state: directory
+        suffix: "untartemp"
+        path: "{{ ansible_env.HOME }}"
+      register: untar_temp
 
-    - name: "extract kernel ./boot to target"
-      register: kernel_boot_extract
+    - name: "extract kernel to target"
+      register: kernel_tar_extract
       become: yes
       unarchive:
         remote_src: no
         src: "{{ kernel_tar_path }}"
-        dest: "{{ boot_path }}"
-        exclude:
-        - "./lib"
+        dest: "{{ untar_temp.path }}"
 
     - name: "copy kernel ./boot to correct location"
       become: yes
       copy:
         remote_src: yes
-        src: "{{ boot_path }}/boot/"
+        src: "{{ untar_temp.path }}/boot/"
         dest: "{{ boot_path }}/"
+        backup: yes
 
-    - name: "remove ./boot files from temp extraction location"
+    - name: "copy kernel ./lib/modules to correct location"
+      become: yes
+      copy:
+        remote_src: yes
+        src: "{{ untar_temp.path }}/lib/modules/"
+        dest: "/lib/modules/"
+
+    - name: "remove temp untar dir"
       become: yes
       file:
-        path: "{{ boot_path }}/boot"
+        path: "{{ untar_temp.path }}"
         state: absent
     
-    - name: "comment out previous kernel in config.txt"
-      become: yes
-      lineinfile:
-        path: "{{ config_txt_path }}"
-        regexp: '^((?<!#)kernel=(?!kernel8-p4\.img).*)'
-        line: '#\1'
-        backrefs: yes
-        create: no
+    - name: "Switch kernel for ubuntu 18"
+      block:
+        - name: "comment out previous kernel in config.txt"
+          become: yes
+          lineinfile:
+            path: "{{ config_txt_path }}"
+            regexp: '^((?<!#)kernel=(?!kernel8-p4\.img).*)'
+            line: '#\1'
+            backrefs: yes
+            create: no
 
-    - name: 'add kernel in config.txt'
-      become: yes
-      register: config_kernel
-      lineinfile:
-        path: "{{ config_txt_path }}"
-        line: 'kernel=kernel8-p4.img'
-        state: present
-        create: no
+        - name: 'add kernel in config.txt'
+          become: yes
+          register: config_kernel
+          lineinfile:
+            path: "{{ config_txt_path }}"
+            line: 'kernel=kernel8-p4.img'
+            state: present
+            create: no
+      when: ansible_lsb['major_release']=="18"
+
+    - name: "Switch kernel for ubuntu 20"
+      block:
+        - name: "comment out previous kernel in config.txt"
+          become: yes
+          lineinfile:
+            path: "{{ config_txt_path }}"
+            regexp: '^((?<!#)kernel=uboot_rpi_4\.bin.*)'
+            line: '#\1'
+            backrefs: yes
+            create: no
+
+        - name: 'add kernel in config.txt'
+          become: yes
+          register: config_kernel
+          lineinfile:
+            path: "{{ config_txt_path }}"
+            line: 'kernel=kernel8-p4.img'
+            regexp: '^kernel=kernel8-p4.img'
+            insertafter: '[pi4]'
+            insertbefore: '[pi2]'
+            state: present
+            create: no
+      when: ansible_lsb['major_release']=="20"
+
   when: kernel_modules.matched == 0
   tags: kernel_version

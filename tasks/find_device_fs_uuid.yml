@@ -1,0 +1,22 @@
+---
+
+- name: "process vars"
+  set_fact:
+    # params:
+    target_device: '{{ target_device }}'
+
+    # local vars:
+    # e.g. iscsi_target_config: "/etc/iscsi/nodes/{{ iscsi_target_iqn }}/{{ iscsi_target_ip }},{{ iscsi_target_port }},1/default"
+
+    # returns:
+    device_uuid: None
+
+- name: "find device filesystem uuid"
+  become: yes
+  command: "lsblk --noheadings --output uuid {{ target_device }}"
+  register: device_uuid_command
+  changed_when: false
+
+- name: "set device filesystem uuid"
+  set_fact:
+    device_uuid: "{{ device_uuid_command.stdout }}"

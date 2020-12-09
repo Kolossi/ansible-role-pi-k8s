@@ -1,0 +1,41 @@
+---
+
+- name: "install open-iscsi & initramfs-tools"
+  become: yes
+  register: iscsi_install
+  apt:
+    force_apt_get: yes # there's no need to use aptitude
+    name: ['open-iscsi','initramfs-tools']
+    state: present
+    install_recommends: no
+
+- name: "disable ib_iser" # <- was causing error during boot on pi4b
+  become: yes
+  register: iscsi_iser
+  lineinfile:
+    path: "/lib/modules-load.d/open-iscsi.conf"
+    regexp: '^(ib_iser)$'
+    line: '#\1'
+    backrefs: yes
+  when: is_raspbian
+
+- import_tasks: iscsi_set_initiatorname.yml
+
+- name: "enable iscsi service"
+  become: yes
+  register: iscsi_service_enabled
+  systemd:
+    name: "{{ 'open-iscsi.service' if (is_ubuntu) else 'iscsi.service' }}"
+    enabled: yes
+
+- name: "start iscsi service"
+  become: yes
+  register: iscsi_service_start
+  systemd:
+    name: "{{ 'open-iscsi.service' if (is_ubuntu) else 'iscsi.service' }}"
+    state: "{{'restarted' if (iscsi_iser is defined and iscsi_iser.changed) else 'started'}}"
+
+#- name: 'reboot after setting up iscsi service'
+#  become: yes
+#  reboot:
+#  when: iscsi_install.changed or ((iscsi_iser|default(None) != None) and iscsi_iser.changed) or iscsi_service_enabled.changed or iscsi_service_start.changed

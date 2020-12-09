@@ -104,7 +104,7 @@
       patterns: '*-raspi2'
     register: kernel_files_to_clear
     when: kernel_version is defined
-    tags: pi_setup
+    tags: pi_setup,kernel_version
 
   - name: 'remove old kernel files'
     become: yes
@@ -113,7 +113,7 @@
       state: absent
     with_items: "{{ kernel_files_to_clear.files }}"
     when: kernel_version is defined
-    tags: pi_setup
+    tags: pi_setup,kernel_version
 
 # fix boot hang because of low entropy due to missing mouse
 # thanks: https://www.linuxquestions.org/questions/debian-26/debian-hangs-at-boot-with-random-crng-init-done-4175613405/#post5889997
@@ -145,7 +145,7 @@
     backrefs: yes
     create: no
   when: kernel_version is defined
-  tags: pi_setup
+  tags: pi_setup,kernel_version
 
 - name: 'add x64 kernel in config.txt'
   become: yes
@@ -156,7 +156,7 @@
     state: present
     create: no
   when: kernel_version is defined
-  tags: pi_setup
+  tags: pi_setup,kernel_version
 
 - name: "include kernel_version_ubuntu.yml"
   include_tasks: 'kernel_version_ubuntu.yml'

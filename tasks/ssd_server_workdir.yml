@@ -1,0 +1,218 @@
+---
+
+- name: 'fail when ssd_server_hostname not included in play hosts'
+  fail:
+    msg: "ssd server '{{ ssd_server_hostname }}' not included in play hosts"
+  when: ssd_server_hostname not in play_hosts
+  tags: ssd_server_workdir
+  
+- include_tasks: 
+    file: iscsi_install_server_tools.yml
+    apply:
+      tags: ssd_server_workdir
+  when: inventory_hostname == ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: "mount ssd device"
+  become: yes
+  mount:
+    path: "{{ ssd_server_mount_path }}"
+    src: "{{ ssd_server_device }}"
+    fstype: ext4
+    opts: defaults
+    state: mounted
+  when: inventory_hostname == ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: "make ssd blocks dir"
+  become: yes
+  file:
+    path: "{{ ssd_server_mount_path }}/blocks"
+    state: directory
+  when: inventory_hostname == ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: "make master local workdir"
+  become: yes
+  file:
+    path: "{{ ssd_server_mount_path }}/local_workdir"
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: '0777'
+  when: inventory_hostname == ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: "make cluster workdir"
+  become: yes
+  file:
+    path: "{{ ssd_server_mount_path }}/cluster_workdir"
+    owner: nobody
+    group: nogroup
+    mode: '0777'
+    state: directory
+  when: inventory_hostname == ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: 'bind master local workdir'
+  become: yes
+  mount:
+    src: "{{ ssd_server_mount_path }}/local_workdir"
+    path: "{{ node_workdir_path }}"
+    opts: bind
+    fstype: none
+    state: mounted
+  when: inventory_hostname == ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: "make client workdir blocks file"
+  become: yes
+  register: blockfile_create
+  file:
+    path: "{{ ssd_server_mount_path }}/blocks/{{ inventory_hostname }}-workdir.img"
+    state: touch
+    modification_time: preserve
+    access_time: preserve
+  when: inventory_hostname != ssd_server_hostname
+  delegate_to: "{{ ssd_server_hostname }}"
+  tags: ssd_server_workdir
+ 
+- name: "fill client workdir blocks file"
+  become: yes
+  command:
+    cmd: "dd if=/dev/zero of={{ blockfile_create.dest }} bs=1M count={{ node_workdir_size_mb }} status=none"
+  when: inventory_hostname != ssd_server_hostname and blockfile_create.changed
+  delegate_to: "{{ ssd_server_hostname }}"
+  tags: ssd_server_workdir
+
+- name: "create iscsi target config"
+  become: yes
+  register: node_workdir_target_create
+  template:
+    src: "workdir_target.conf.j2"
+    dest: '/etc/tgt/conf.d/{{ node_workdir_iqn | replace("{{ inventory_hostname }}",inventory_hostname) | replace(":",".") }}.conf'
+  delegate_to: "{{ ssd_server_hostname }}"
+  when: inventory_hostname != ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: "request tgt restart if required"
+  set_fact:
+    restart_tgt: yes
+  delegate_to: "{{ ssd_server_hostname }}"
+  when: inventory_hostname != ssd_server_hostname and (blockfile_create.changed or node_workdir_target_create.changed)
+  tags: ssd_server_workdir
+
+- name: "systemctl restart tgt"
+  become: yes
+  systemd:
+    state: restarted
+    name: tgt
+    daemon_reload: yes
+  when: inventory_hostname == ssd_server_hostname and (restart_tgt | default(False))
+  tags: ssd_server_workdir
+
+- name: "check for existing workdir mount"
+  set_fact:
+    workdir_found: yes
+  no_log: true
+  with_items: "{{ ansible_mounts }}"
+  when: "item.mount==node_workdir_path and 'ext4' in item.fstype and 'UUID' in item.device"
+  tags: ssd_server_workdir
+
+- name: "mount workdir target"
+  include_tasks: 
+    file: iscsi_mount_target.yml
+    apply:
+      tags: ssd_server_workdir
+  vars:
+    iscsi_target_ip: "{{ hostvars[ssd_server_hostname]['ansible_default_ipv4']['address'] }}"
+    iscsi_target_port: '{{ node_workdir_port | default("3260") }}'
+    iscsi_target_iqn: '{{ node_workdir_iqn }}'
+    iscsi_target_username: '{{ node_workdir_user }}'
+    iscsi_target_password: '{{ node_workdir_pass }}'
+    iscsi_target_startup: 'automatic'
+  when: inventory_hostname != ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: 'create workdir'
+  become: yes
+  file:
+    path: "{{ node_workdir_path }}"
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: '0777'
+  when: inventory_hostname != ssd_server_hostname and workdir_found is not defined
+  tags: ssd_server_workdir
+
+- name: "make workdir file system (include)"
+  include_tasks:
+    file: make_ext4_filesystem.yml
+    apply:
+      tags: ssd_server_workdir
+  vars:
+    filesystem_device: "{{ iscsi_device }}"
+    filesystem_force_make: "yes"
+  when: inventory_hostname != ssd_server_hostname and workdir_found is not defined
+  tags: ssd_server_workdir
+
+- name: "find workdir file system uuid (include)"
+  include_tasks:
+    file: find_device_fs_uuid.yml
+    apply:
+      tags: ssd_server_workdir
+  vars:
+    target_device: "{{ iscsi_device }}"
+  when: inventory_hostname != ssd_server_hostname and workdir_found is not defined
+  tags: ssd_server_workdir
+
+- name: "mount workdir device"
+  become: yes
+  mount:
+    src: "UUID={{ device_uuid }}"
+    path: "{{ node_workdir_path }}"
+    fstype: ext4
+    opts: default
+    state: mounted
+  when: inventory_hostname != ssd_server_hostname and workdir_found is not defined
+  tags: ssd_server_workdir
+
+- name: 'create tmp in workdir'
+  become: yes
+  file:
+    path: "{{ node_workdir_path }}/tmp"
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: '0777'
+  tags: ssd_server_workdir
+
+- name: 'create log in workdir'
+  become: yes
+  file:
+    path: "{{ node_workdir_path }}/log"
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: '0777'
+  tags: ssd_server_workdir
+
+- name: 'bind /tmp to workdir'
+  become: yes
+  mount:
+    src: "{{ node_workdir_path }}/tmp"
+    path: /tmp
+    opts: bind
+    fstype: none
+    state: mounted
+  tags: ssd_server_workdir
+
+- name: 'bind /var/log to workdir'
+  become: yes
+  mount:
+    src: "{{ node_workdir_path }}/log"
+    path: /var/log
+    opts: bind
+    fstype: none
+    state: mounted
+  tags: ssd_server_workdir
