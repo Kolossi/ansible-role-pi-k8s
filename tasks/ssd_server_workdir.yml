@@ -1,12 +1,14 @@
 ---
 
 - name: 'fail when ssd_server_hostname not included in play hosts'
+  run_once: yes
   fail:
     msg: "ssd server '{{ ssd_server_hostname }}' not included in play hosts"
   when: ssd_server_hostname not in play_hosts
   tags: ssd_server_workdir
   
-- include_tasks: 
+- name: 'install iscsi server tools (include)'
+  include_tasks: 
     file: iscsi_install_server_tools.yml
     apply:
       tags: ssd_server_workdir
@@ -19,7 +21,7 @@
     path: "{{ ssd_server_mount_path }}"
     src: "{{ ssd_server_device }}"
     fstype: ext4
-    opts: defaults
+    opts: defaults,noatime
     state: mounted
   when: inventory_hostname == ssd_server_hostname
   tags: ssd_server_workdir
@@ -35,7 +37,7 @@
 - name: "make master local workdir"
   become: yes
   file:
-    path: "{{ ssd_server_mount_path }}/local_workdir"
+    path: "{{ ssd_server_mount_path }}/local_node_workdir"
     state: directory
     owner: nobody
     group: nogroup
@@ -46,7 +48,7 @@
 - name: "make cluster workdir"
   become: yes
   file:
-    path: "{{ ssd_server_mount_path }}/cluster_workdir"
+    path: "{{ ssd_server_mount_path }}/local_cluster_workdir"
     owner: nobody
     group: nogroup
     mode: '0777'
@@ -54,11 +56,22 @@
   when: inventory_hostname == ssd_server_hostname
   tags: ssd_server_workdir
 
-- name: 'bind master local workdir'
+- name: 'bind master local node workdir'
   become: yes
   mount:
-    src: "{{ ssd_server_mount_path }}/local_workdir"
+    src: "{{ ssd_server_mount_path }}/local_node_workdir"
     path: "{{ node_workdir_path }}"
+    opts: bind
+    fstype: none
+    state: mounted
+  when: inventory_hostname == ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: 'bind master local cluster workdir'
+  become: yes
+  mount:
+    src: "{{ ssd_server_mount_path }}/local_cluster_workdir"
+    path: "{{ cluster_workdir_path }}"
     opts: bind
     fstype: none
     state: mounted
@@ -74,6 +87,7 @@
     modification_time: preserve
     access_time: preserve
   when: inventory_hostname != ssd_server_hostname
+  notify: Restart tgt
   delegate_to: "{{ ssd_server_hostname }}"
   tags: ssd_server_workdir
  
@@ -91,35 +105,23 @@
   template:
     src: "workdir_target.conf.j2"
     dest: '/etc/tgt/conf.d/{{ node_workdir_iqn | replace("{{ inventory_hostname }}",inventory_hostname) | replace(":",".") }}.conf'
+  notify: Restart tgt
   delegate_to: "{{ ssd_server_hostname }}"
   when: inventory_hostname != ssd_server_hostname
   tags: ssd_server_workdir
 
-- name: "request tgt restart if required"
-  set_fact:
-    restart_tgt: yes
-  delegate_to: "{{ ssd_server_hostname }}"
-  when: inventory_hostname != ssd_server_hostname and (blockfile_create.changed or node_workdir_target_create.changed)
-  tags: ssd_server_workdir
-
-- name: "systemctl restart tgt"
-  become: yes
-  systemd:
-    state: restarted
-    name: tgt
-    daemon_reload: yes
-  when: inventory_hostname == ssd_server_hostname and (restart_tgt | default(False))
-  tags: ssd_server_workdir
+- name: "restart tgt if required"
+  meta: flush_handlers
 
 - name: "check for existing workdir mount"
   set_fact:
     workdir_found: yes
   no_log: true
   with_items: "{{ ansible_mounts }}"
-  when: "item.mount==node_workdir_path and 'ext4' in item.fstype and 'UUID' in item.device"
+  when: "item.mount==node_workdir_path and 'ext4' in item.fstype"
   tags: ssd_server_workdir
 
-- name: "mount workdir target"
+- name: "mount workdir target (include)"
   include_tasks: 
     file: iscsi_mount_target.yml
     apply:
@@ -172,7 +174,7 @@
     src: "UUID={{ device_uuid }}"
     path: "{{ node_workdir_path }}"
     fstype: ext4
-    opts: default
+    opts: defaults,_netdev,noatime
     state: mounted
   when: inventory_hostname != ssd_server_hostname and workdir_found is not defined
   tags: ssd_server_workdir
@@ -185,6 +187,7 @@
     owner: nobody
     group: nogroup
     mode: '0777'
+  when: tmp_workdir|default(False)
   tags: ssd_server_workdir
 
 - name: 'create log in workdir'
@@ -195,9 +198,10 @@
     owner: nobody
     group: nogroup
     mode: '0777'
+  when: log_workdir|default(False)
   tags: ssd_server_workdir
 
-- name: 'bind /tmp to workdir'
+- name: 'bind /tmp to local workdir on server'
   become: yes
   mount:
     src: "{{ node_workdir_path }}/tmp"
@@ -205,9 +209,10 @@
     opts: bind
     fstype: none
     state: mounted
+  when: tmp_workdir|default(False) and inventory_hostname == ssd_server_hostname
   tags: ssd_server_workdir
 
-- name: 'bind /var/log to workdir'
+- name: 'bind /var/log to local workdir on server'
   become: yes
   mount:
     src: "{{ node_workdir_path }}/log"
@@ -215,4 +220,63 @@
     opts: bind
     fstype: none
     state: mounted
+  when: log_workdir|default(False) and inventory_hostname == ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: "bind \/tmp to workdir target (include)"
+  include_tasks:
+    file: add_systemd_bind_mount.yml
+    apply:
+      tags: ssd_server_workdir
+  vars:
+    bindmount_src: '{{ node_workdir_path }}/tmp'
+    bindmount_dest: '/tmp'
+  when: tmp_workdir|default(False) and inventory_hostname != ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: "bind \/var\/log to workdir target (include)"
+  include_tasks:
+    file: add_systemd_bind_mount.yml
+    apply:
+      tags: ssd_server_workdir
+  vars:
+    bindmount_src: '{{ node_workdir_path }}/log'
+    bindmount_dest: '/var/log'
+  when: log_workdir|default(False) and inventory_hostname != ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: "install nfs server (include)"
+  include_tasks:
+    file: nfs_install_server.yml
+    apply:
+      tags: ssd_server_workdir
+  when: inventory_hostname == ssd_server_hostname
+  tags: ssd_server_workdir
+
+- name: "nfs share cluster-workdir"
+  become: yes
+  lineinfile:
+    path: /etc/exports
+    line: "{{ cluster_workdir_path }} {{ cluster_workdir_network }}(rw)"
+    create: yes
+  when: inventory_hostname == ssd_server_hostname
+  tags: ssd_server_workdir
+ 
+- name: "reload nfs server (include)"
+  include_tasks:
+    file: nfs_server_restart.yml
+    apply:
+      tags: ssd_server_workdir
+  when: inventory_hostname == ssd_server_hostname
+  tags: ssd_server_workdir
+    
+- name: "mount nfs cluster workdir"
+  become: yes
+  mount:
+    path: "{{ cluster_workdir_path }}"
+    src: "{{ hostvars[ssd_server_hostname]['ansible_default_ipv4']['address']}}:{{ cluster_workdir_path }}"
+    fstype: nfs
+    opts: defaults
+    state: mounted
+  when: inventory_hostname != ssd_server_hostname
   tags: ssd_server_workdir

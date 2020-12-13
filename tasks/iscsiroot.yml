@@ -109,8 +109,8 @@
       become: yes
       lineinfile:
         path: "{{ iscsitemp.path }}/etc/fstab"
-        regexp: "^UUID={{ iscsi_uuid }}\\s+/\\s+ext4\\s+{{ '_netdev' if (is_ubuntu) else 'defaults' }}\\s+{{ '0' if (is_ubuntu) else '1' }}\\s+{{ '0' if (is_ubuntu) else '1' }}\\s*$"
-        line: "UUID={{ iscsi_uuid }}       /       ext4    {{ '_netdev' if (is_ubuntu) else 'defaults' }}        {{ '0' if (is_ubuntu) else '1' }}       {{ '0' if (is_ubuntu) else '1' }}"
+        regexp: "^UUID={{ iscsi_uuid }}\\s+/\\s+ext4\\s+{{ '_netdev' if (is_ubuntu) else 'defaults' }}\\s+0\\s+1\\s*$"
+        line: "UUID={{ iscsi_uuid }} / ext4 {{ '_netdev' if (is_ubuntu) else 'defaults' }} 0 1"
 
   always:
     - name: "unmount iscsi root source in copy"

@@ -1,0 +1,10 @@
+---
+
+- name: Restart tgt
+  run_once: yes
+  become: yes
+  systemd:
+    state: restarted
+    name: tgt
+    daemon_reload: yes
+  delegate_to: "{{ ssd_server_hostname }}" 

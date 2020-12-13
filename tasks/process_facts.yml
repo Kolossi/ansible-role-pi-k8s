@@ -41,3 +41,13 @@
 - name: "get target workers"
   set_fact:
     target_workers: "{{ groups['k8sworkers'] | intersect(play_hosts) }}"
+
+- name: "fail if multiple tmp options given"
+  fail:
+    msg: "use tmp_mem OR tmp_workdir not both"
+  when: tmp_mem|default(False) and tmp_workdir|default(False)
+
+- name: "fail if multiple log options given"
+  fail:
+    msg: "use log_mem OR log_workdir not both"
+  when: log_mem|default(False) and log_workdir|default(False)

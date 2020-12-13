@@ -29,6 +29,15 @@
     backrefs: yes
   when: iscsi_target_startup != "dontchange"
 
+- name: "update iscsi target connection startup"
+  become: yes
+  lineinfile:
+    path: "{{ iscsi_target_config }}"
+    regexp: '^(node.conn\[0\].startup[ ]*=[ ]*).*'
+    line: '\1{{ iscsi_target_startup }}'
+    backrefs: yes
+  when: iscsi_target_startup != "dontchange"
+
 - name: "set iscsi target CHAP authmethod"
   become: yes
   lineinfile:

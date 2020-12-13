@@ -1,0 +1,13 @@
+---
+
+- name: Reload exports
+  become: yes
+  command: exportfs -a
+
+- name: Restart nfs server
+  run_once: yes
+  become: yes
+  systemd:
+    state: restarted
+    name: nfs-kernel-server
+    daemon_reload: yes

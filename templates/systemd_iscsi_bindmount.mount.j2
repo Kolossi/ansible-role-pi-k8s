@@ -1,0 +1,17 @@
+# see https://blog.agchapman.com/auto-mounting-network-file-systems-with-systemd/
+#   & https://utcc.utoronto.ca/~cks/space/blog/linux/SystemdBindMountUnits
+[Unit]
+Description =  Bind mount {{ bindmount_src }} from iscsi target on {{ bindmount_dest }}
+Requires = iscsi.service remote-fs.target
+After = iscsi.service remote-fs.target
+
+[Mount]
+What={{ bindmount_src }}
+Where={{ bindmount_dest }}
+Type=none
+Options=bind
+# Uncomment the below if your server is real slow
+# TimeoutSec=10
+
+[Install]
+WantedBy=default.target

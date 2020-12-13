@@ -1,0 +1,26 @@
+---
+
+- name: "process vars"
+  set_fact:
+    #params
+    bindmount_src: '{{ bindmount_src }}'
+    bindmount_dest: '{{ bindmount_dest }}'
+
+    # local vars
+    bindmount_name: '{{ bindmount_dest | regex_replace("^\/","") | regex_replace("\/","-") }}'
+
+- name: "create systemd bindmount unit"
+  become: yes
+  register: bindmount_create
+  template:
+    src: "systemd_iscsi_bindmount.mount.j2"
+    dest: '/etc/systemd/system/{{ bindmount_name }}.mount'
+
+- name: "start bindmount unit"
+  become: yes
+  register: bindmount_start
+  systemd:
+    daemon_reload: yes
+    name: '{{ bindmount_name }}.mount'
+    enabled: yes
+    state: started
