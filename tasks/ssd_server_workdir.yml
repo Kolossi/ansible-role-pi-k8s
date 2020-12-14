@@ -34,7 +34,7 @@
   when: inventory_hostname == ssd_server_hostname
   tags: ssd_server_workdir
 
-- name: "make master local workdir"
+- name: "make local node workdir"
   become: yes
   file:
     path: "{{ ssd_server_mount_path }}/local_node_workdir"
@@ -45,7 +45,7 @@
   when: inventory_hostname == ssd_server_hostname
   tags: ssd_server_workdir
 
-- name: "make cluster workdir"
+- name: "make local cluster workdir"
   become: yes
   file:
     path: "{{ ssd_server_mount_path }}/local_cluster_workdir"
@@ -78,7 +78,7 @@
   when: inventory_hostname == ssd_server_hostname
   tags: ssd_server_workdir
 
-- name: "make client workdir blocks file"
+- name: "make node workdir blocks file"
   become: yes
   register: blockfile_create
   file:
@@ -91,7 +91,7 @@
   delegate_to: "{{ ssd_server_hostname }}"
   tags: ssd_server_workdir
  
-- name: "fill client workdir blocks file"
+- name: "fill node workdir blocks file"
   become: yes
   command:
     cmd: "dd if=/dev/zero of={{ blockfile_create.dest }} bs=1M count={{ node_workdir_size_mb }} status=none"
@@ -113,7 +113,7 @@
 - name: "restart tgt if required"
   meta: flush_handlers
 
-- name: "check for existing workdir mount"
+- name: "check for existing node workdir mount"
   set_fact:
     workdir_found: yes
   no_log: true
@@ -136,7 +136,7 @@
   when: inventory_hostname != ssd_server_hostname
   tags: ssd_server_workdir
 
-- name: 'create workdir'
+- name: 'create node workdir mountpoint'
   become: yes
   file:
     path: "{{ node_workdir_path }}"
@@ -147,7 +147,7 @@
   when: inventory_hostname != ssd_server_hostname and workdir_found is not defined
   tags: ssd_server_workdir
 
-- name: "make workdir file system (include)"
+- name: "make node workdir file system (include)"
   include_tasks:
     file: make_ext4_filesystem.yml
     apply:
@@ -158,7 +158,7 @@
   when: inventory_hostname != ssd_server_hostname and workdir_found is not defined
   tags: ssd_server_workdir
 
-- name: "find workdir file system uuid (include)"
+- name: "find node workdir file system uuid (include)"
   include_tasks:
     file: find_device_fs_uuid.yml
     apply:
@@ -168,7 +168,7 @@
   when: inventory_hostname != ssd_server_hostname and workdir_found is not defined
   tags: ssd_server_workdir
 
-- name: "mount workdir device"
+- name: "mount node workdir device"
   become: yes
   mount:
     src: "UUID={{ device_uuid }}"
@@ -179,7 +179,18 @@
   when: inventory_hostname != ssd_server_hostname and workdir_found is not defined
   tags: ssd_server_workdir
 
-- name: 'create tmp in workdir'
+- name: "change node workdir perms"
+  become: yes
+  file:
+    path: "{{ node_workdir_path }}"
+    recurse: yes
+    owner: nobody
+    group: nogroup
+    mode: 0777
+  when: inventory_hostname != ssd_server_hostname and workdir_found is not defined
+  tags: ssd_server_workdir
+
+- name: 'create tmp in node workdir'
   become: yes
   file:
     path: "{{ node_workdir_path }}/tmp"
@@ -190,7 +201,7 @@
   when: tmp_workdir|default(False)
   tags: ssd_server_workdir
 
-- name: 'create log in workdir'
+- name: 'create log in node workdir'
   become: yes
   file:
     path: "{{ node_workdir_path }}/log"
@@ -201,7 +212,7 @@
   when: log_workdir|default(False)
   tags: ssd_server_workdir
 
-- name: 'bind /tmp to local workdir on server'
+- name: 'bind /tmp to local node workdir on server'
   become: yes
   mount:
     src: "{{ node_workdir_path }}/tmp"
@@ -212,7 +223,7 @@
   when: tmp_workdir|default(False) and inventory_hostname == ssd_server_hostname
   tags: ssd_server_workdir
 
-- name: 'bind /var/log to local workdir on server'
+- name: 'bind /var/log to local node workdir on server'
   become: yes
   mount:
     src: "{{ node_workdir_path }}/log"
@@ -223,7 +234,7 @@
   when: log_workdir|default(False) and inventory_hostname == ssd_server_hostname
   tags: ssd_server_workdir
 
-- name: "bind \/tmp to workdir target (include)"
+- name: "bind \/tmp to node workdir target (include)"
   include_tasks:
     file: add_systemd_bind_mount.yml
     apply:
@@ -234,7 +245,7 @@
   when: tmp_workdir|default(False) and inventory_hostname != ssd_server_hostname
   tags: ssd_server_workdir
 
-- name: "bind \/var\/log to workdir target (include)"
+- name: "bind \/var\/log to node workdir target (include)"
   include_tasks:
     file: add_systemd_bind_mount.yml
     apply:
@@ -253,7 +264,7 @@
   when: inventory_hostname == ssd_server_hostname
   tags: ssd_server_workdir
 
-- name: "nfs share cluster-workdir"
+- name: "nfs share cluster workdir"
   become: yes
   lineinfile:
     path: /etc/exports
@@ -276,7 +287,7 @@
     path: "{{ cluster_workdir_path }}"
     src: "{{ hostvars[ssd_server_hostname]['ansible_default_ipv4']['address']}}:{{ cluster_workdir_path }}"
     fstype: nfs
-    opts: defaults
+    opts: defaults,_netdev
     state: mounted
   when: inventory_hostname != ssd_server_hostname
   tags: ssd_server_workdir

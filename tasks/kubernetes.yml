@@ -29,7 +29,7 @@
     force_apt_get: yes # there's no need to use aptitude
     update_cache: yes
     cache_valid_time: 3600 # Only run "update_cache=yes" if the last one is more than 3600 seconds ago
-    name: 'kubeadm={{ kubeadm_version }}'
+    name: [ 'kubelet={{ kubeadm_version }}', 'kubectl={{ kubeadm_version }}', 'kubeadm={{ kubeadm_version }}' ]
 
 - name: 'Get held packages'
   become: yes
